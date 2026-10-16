@@ -39,8 +39,10 @@ class ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Get initials for placeholder
-    final initials = user.name.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
+    final cleanWords = user.name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+    final initials = cleanWords.isNotEmpty
+        ? cleanWords.map((e) => e[0]).take(2).join().toUpperCase()
+        : "U";
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
@@ -49,16 +51,16 @@ class ProfileHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         children: [
-          // Profile image with edit badge
+          // Profile image with camera badge
           Stack(
             alignment: Alignment.bottomRight,
             children: [
@@ -66,19 +68,19 @@ class ProfileHeader extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    color: AppTheme.secondaryColor,
                     width: 4,
                   ),
                 ),
                 child: CircleAvatar(
-                  radius: 54,
-                  backgroundColor: AppTheme.primaryColor.withOpacity(0.08),
+                  radius: 50,
+                  backgroundColor: AppTheme.secondaryColor.withOpacity(0.4),
                   backgroundImage: user.profilePic != null ? FileImage(File(user.profilePic!)) : null,
                   child: user.profilePic == null
                       ? Text(
                           initials.isNotEmpty ? initials : "👤",
                           style: const TextStyle(
-                            fontSize: 36,
+                            fontSize: 32,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.primaryColor,
                           ),
@@ -90,14 +92,21 @@ class ProfileHeader extends StatelessWidget {
                 onTap: () => _pickImage(context),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppTheme.primaryColor,
                     shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: const Icon(
                     Icons.camera_alt_rounded,
                     color: Colors.white,
-                    size: 18,
+                    size: 16,
                   ),
                 ),
               ),
@@ -108,24 +117,25 @@ class ProfileHeader extends StatelessWidget {
           Text(
             user.name,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 22,
-                  color: AppTheme.textColorPrimary,
-                ),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 21,
+              color: AppTheme.textColorPrimary,
+              letterSpacing: -0.3,
+            ),
           ),
           const SizedBox(height: 6),
           // Phone
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.phone_rounded, size: 14, color: Colors.grey.shade500),
+              const Icon(Icons.phone_rounded, size: 14, color: AppTheme.textColorSecondary),
               const SizedBox(width: 4),
               Text(
                 user.phoneNumber,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  color: AppTheme.textColorSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -136,33 +146,113 @@ class ProfileHeader extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.email_outlined, size: 14, color: Colors.grey.shade500),
+              const Icon(Icons.email_outlined, size: 14, color: AppTheme.textColorSecondary),
               const SizedBox(width: 4),
               Text(
                 user.email,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey.shade500,
+                  color: AppTheme.textColorSecondary.withOpacity(0.85),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           // Edit Profile Button
-          OutlinedButton.icon(
+          AnimatedButtonWrapper(
             onPressed: onEditPressed,
-            icon: const Icon(Icons.edit_rounded, size: 16),
-            label: const Text("Edit Profile"),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.primaryColor,
-              side: const BorderSide(color: AppTheme.primaryColor),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.edit_rounded, size: 16, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    "Edit Profile",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// Button scale wrapper
+class AnimatedButtonWrapper extends StatefulWidget {
+  final VoidCallback? onPressed;
+  final Widget child;
+
+  const AnimatedButtonWrapper({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  });
+
+  @override
+  State<AnimatedButtonWrapper> createState() => _AnimatedButtonWrapperState();
+}
+
+class _AnimatedButtonWrapperState extends State<AnimatedButtonWrapper>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 80),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.96).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isEnabled = widget.onPressed != null;
+    return GestureDetector(
+      onTapDown: isEnabled ? (_) => _controller.forward() : null,
+      onTapUp: isEnabled ? (_) => _controller.reverse() : null,
+      onTapCancel: isEnabled ? () => _controller.reverse() : null,
+      onTap: widget.onPressed,
+      child: AnimatedBuilder(
+        animation: _scale,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: _scale.value,
+            child: child,
+          );
+        },
+        child: widget.child,
       ),
     );
   }

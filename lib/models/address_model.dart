@@ -35,6 +35,21 @@ class AddressModel {
 
   String get fullAddress => "$address, $city, $state - $pincode";
 
+  factory AddressModel.fromJson(Map<String, dynamic> json) {
+    String street = json['street'] ?? json['address'] ?? '';
+    if (json['house_number'] != null && json['house_number'].toString().isNotEmpty) {
+      street = "${json['house_number']}, $street";
+    }
+    return AddressModel(
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      label: json['address_type'] ?? json['label'] ?? 'Home',
+      address: street,
+      city: json['city'] ?? '',
+      state: json['state'] ?? '',
+      pincode: json['pincode'] ?? '',
+    );
+  }
+
   static List<AddressModel> get mockAddresses => [
         AddressModel(
           id: "1",

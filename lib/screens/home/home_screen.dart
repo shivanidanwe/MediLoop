@@ -2,13 +2,20 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_model.dart';
 import '../../models/refill_model.dart';
+import '../../models/medicine_model.dart';
+import '../../services/medicine_service.dart';
 import '../../routes/app_routes.dart';
 import '../../widgets/custom_home_appbar.dart';
 import '../../widgets/prescription_upload_card.dart';
 import '../../widgets/ai_ordering_card.dart';
 import '../../widgets/refill_reminder_card.dart';
 import '../../widgets/custom_bottom_navigation.dart';
+import '../../widgets/category_card.dart';
+import '../../widgets/offer_card.dart';
 import '../profile/profile_screen.dart';
+import '../cart/cart_screen.dart';
+import '../notifications/notifications_screen.dart';
+import '../../services/profile_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,8 +26,59 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final UserModel _user = UserModel.mock;
+  late UserModel _user;
   final RefillModel _refill = RefillModel.mock;
+  List<Category> _categories = [];
+  List<Offer> _offers = [];
+  bool _isLoadingCategories = true;
+  bool _isLoadingOffers = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _user = ProfileService().getUser();
+    ProfileService().addListener(_onProfileUpdated);
+    if (_user.name.isEmpty) {
+      ProfileService().fetchProfileFromServer();
+    }
+    _loadHomeData();
+  }
+
+  void _onProfileUpdated() {
+    if (mounted) {
+      setState(() {
+        _user = ProfileService().getUser();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    ProfileService().removeListener(_onProfileUpdated);
+    super.dispose();
+  }
+
+  Future<void> _loadHomeData() async {
+    try {
+      final categoriesList = await MedicineService.fetchCategories();
+      final offersList = await MedicineService.fetchOffers();
+      if (mounted) {
+        setState(() {
+          _categories = categoriesList;
+          _offers = offersList;
+          _isLoadingCategories = false;
+          _isLoadingOffers = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoadingCategories = false;
+          _isLoadingOffers = false;
+        });
+      }
+    }
+  }
 
   void _onItemTapped(int index) {
     if (index == 2) {
@@ -39,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: _selectedIndex == 0
             ? Column(
@@ -60,10 +118,215 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeBody() {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Search Medicines Input (Tapping navigates to Search screen)
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 50),
+            child: GestureDetector(
+              onTap: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: const Color(0xFFE5E7EB).withOpacity(0.5),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.search_rounded,
+                      color: AppTheme.primaryColor,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      "Search medicines, dosage, brands...",
+                      style: TextStyle(
+                        color: AppTheme.textColorSecondary.withOpacity(0.8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.mic_none_rounded,
+                      color: AppTheme.textColorSecondary.withOpacity(0.6),
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Medicine Categories Section
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Categories",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textColorPrimary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: AppTheme.primaryColor,
+                      ),
+                      child: const Row(
+                        children: [
+                          Text(
+                            "See All",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Icon(Icons.keyboard_arrow_right_rounded, size: 16),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _isLoadingCategories
+                    ? _buildCategoriesShimmer()
+                    : SizedBox(
+                        height: 96,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _categories.length,
+                          itemBuilder: (context, index) {
+                            final category = _categories[index];
+                            return CategoryCard(
+                              category: category,
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  AppRoutes.searchMedicines,
+                                  arguments: category.name,
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Quick Actions Section
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 140),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Quick Actions",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textColorPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildQuickActionItem(
+                      icon: Icons.file_upload_outlined,
+                      label: "Upload Rx",
+                      color: AppTheme.primaryColor,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.uploadPrescription),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.auto_awesome_outlined,
+                      label: "AI Chat",
+                      color: AppTheme.primaryColor,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.local_shipping_outlined,
+                      label: "Track Order",
+                      color: AppTheme.primaryColor,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.orderTracking),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.shopping_bag_outlined,
+                      label: "My Cart",
+                      color: AppTheme.primaryColor,
+                      onTap: () => setState(() => _selectedIndex = 3),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // Offers Banner Section
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 180),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Special Offers",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textColorPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _isLoadingOffers
+                    ? _buildOffersShimmer()
+                    : SizedBox(
+                        height: 136,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _offers.length,
+                          itemBuilder: (context, index) {
+                            return OfferCard(offer: _offers[index]);
+                          },
+                        ),
+                      ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
           // 1. Upload Prescription Card (Staggered Animation 1)
           FadeSlideTransition(
             delay: const Duration(milliseconds: 100),
@@ -104,11 +367,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildOtherTabBody(int index) {
     switch (index) {
       case 1:
-        return _buildNotificationsTab();
+        return const NotificationsScreen();
       case 3:
-        return _buildCartTab();
+        return const CartScreen();
       case 4:
-        return _buildProfileTab();
+        return const ProfileScreen();
       default:
         return const Center(child: Text("Tab not implemented"));
     }
@@ -397,6 +660,127 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- Profile Tab ---
   Widget _buildProfileTab() {
     return const ProfileScreen();
+  }
+
+  Widget _buildCategoriesShimmer() {
+    return SizedBox(
+      height: 96,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 5,
+        itemBuilder: (context, index) {
+          return Container(
+            width: 84,
+            margin: const EdgeInsets.only(right: 12),
+            child: Column(
+              children: [
+                Container(
+                  height: 64,
+                  width: 64,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 12,
+                  width: 45,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildOffersShimmer() {
+    return SizedBox(
+      height: 136,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: 2,
+        itemBuilder: (context, index) {
+          return Container(
+            width: 290,
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(24),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildQuickActionItem({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE5E7EB).withOpacity(0.5),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.015),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.secondaryColor.withOpacity(0.4),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: AppTheme.primaryColor,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textColorPrimary,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

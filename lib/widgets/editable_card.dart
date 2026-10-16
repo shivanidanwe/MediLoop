@@ -274,17 +274,39 @@ class _EditableCardState extends State<EditableCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: _buildTextField(
-                    controller: _ageController,
-                    label: "Age",
-                    icon: Icons.cake_outlined,
-                    keyboardType: TextInputType.number,
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty) return "Age is required";
-                      final age = int.tryParse(val.trim());
-                      if (age == null || age <= 0 || age > 120) return "Enter valid age";
-                      return null;
+                  child: InkWell(
+                    onTap: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.now().subtract(Duration(days: widget.user.age * 365)),
+                        firstDate: DateTime(1920),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        final now = DateTime.now();
+                        int age = now.year - picked.year;
+                        if (now.month < picked.month || (now.month == picked.month && now.day < picked.day)) {
+                          age--;
+                        }
+                        setState(() {
+                          _ageController.text = "$age";
+                        });
+                      }
                     },
+                    child: AbsorbPointer(
+                      child: _buildTextField(
+                        controller: _ageController,
+                        label: "Age (calculated from DOB)",
+                        icon: Icons.cake_outlined,
+                        keyboardType: TextInputType.number,
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return "Age is required";
+                          final age = int.tryParse(val.trim());
+                          if (age == null || age <= 0 || age > 120) return "Enter valid age";
+                          return null;
+                        },
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),

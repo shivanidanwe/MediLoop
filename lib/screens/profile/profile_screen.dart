@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
@@ -6,6 +7,7 @@ import '../../models/user_model.dart';
 import '../../models/address_model.dart';
 import '../../models/prescription_model.dart';
 import '../../services/profile_service.dart';
+import '../../services/auth_service.dart';
 import '../../widgets/profile_header.dart';
 import '../../widgets/editable_card.dart';
 import '../../widgets/address_card.dart';
@@ -26,6 +28,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late UserModel _user;
   late List<AddressModel> _addresses;
   late List<PrescriptionModel> _prescriptions;
+
+  bool _isFetchingProfile = false;
 
   // Address edit state
   bool _isEditingPrimaryAddress = false;
@@ -54,6 +58,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     _emergencyRelationshipController = TextEditingController(text: _user.emergencyRelationship);
     _emergencyPhoneController = TextEditingController(text: _user.emergencyPhone);
+
+    if (_user.name.isEmpty) {
+      _fetchProfileFromServer();
+    }
+  }
+
+  void _fetchProfileFromServer() async {
+    setState(() {
+      _isFetchingProfile = true;
+    });
+    await _profileService.fetchProfileFromServer();
+    if (mounted) {
+      setState(() {
+        _isFetchingProfile = false;
+        _emergencyRelationshipController.text = _user.emergencyRelationship;
+        _emergencyPhoneController.text = _user.emergencyPhone;
+      });
+    }
   }
 
   void _loadData() {
@@ -82,7 +104,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  // --- Profile Picture Update ---
   void _updateProfilePic(String? path) {
     final updated = _user.copyWith(profilePic: path);
     _profileService.updateUser(updated);
@@ -91,7 +112,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Personal Info Update ---
   void _updatePersonalInfo(UserModel updated) {
     _profileService.updateUser(updated);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -99,7 +119,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Primary Address Update (Section 3) ---
   void _startEditingPrimaryAddress() {
     final primaryAddr = _addresses.firstWhere(
       (a) => a.label.toLowerCase() == 'home',
@@ -159,7 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // --- Medical Info Update ---
   void _updateMedicalInfo(List<String> conditions, String allergies) {
     final updated = _user.copyWith(
       medicalConditions: conditions,
@@ -171,7 +189,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Emergency Contact Update ---
   void _saveEmergencyContact() {
     if (_emergencyFormKey.currentState!.validate()) {
       final updated = _user.copyWith(
@@ -188,7 +205,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // --- Multiple Addresses Management (Section 9) ---
   void _showAddressDialog({AddressModel? addressToEdit}) {
     final isEdit = addressToEdit != null;
     final labelController = TextEditingController(text: isEdit ? addressToEdit.label : 'Home');
@@ -202,24 +218,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(isEdit ? "Edit Address" : "Add New Address", style: const TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(isEdit ? "Edit Address" : "Add New Address", style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
           content: SingleChildScrollView(
             child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Label Dropdown
                   DropdownButtonFormField<String>(
-                    value: ['Home', 'Office', 'Other'].contains(labelController.text) ? labelController.text : 'Other',
+                    initialValue: ['Home', 'Office', 'Other'].contains(labelController.text) ? labelController.text : 'Other',
                     items: ['Home', 'Office', 'Other'].map((label) {
                       return DropdownMenuItem(value: label, child: Text(label));
                     }).toList(),
                     onChanged: (val) {
                       if (val != null) labelController.text = val;
                     },
-                    decoration: const InputDecoration(labelText: "Label", contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                    decoration: const InputDecoration(labelText: "Label"),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -251,7 +268,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           decoration: const InputDecoration(labelText: "Pincode"),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) return "Required";
-                            if (val.trim().length != 6) return "Should be 6 digits";
+                            if (val.trim().length != 6) return "6 digits";
                             return null;
                           },
                         ),
@@ -265,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+              child: const Text("Cancel", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
               onPressed: () {
@@ -291,8 +308,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
-                minimumSize: const Size(100, 40),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                minimumSize: const Size(100, 44),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: Text(isEdit ? "Update" : "Add"),
             ),
@@ -307,10 +324,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Delete Address"),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Delete Address", style: TextStyle(fontWeight: FontWeight.bold)),
           content: Text("Are you sure you want to delete '${address.label}' address?"),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: AppTheme.textColorSecondary))),
             TextButton(
               onPressed: () {
                 _profileService.deleteAddress(address.id);
@@ -319,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SnackBar(content: Text('Address deleted successfully')),
                 );
               },
-              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+              child: const Text("Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             )
           ],
         );
@@ -327,7 +346,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Prescription Actions (Section 8) ---
   Future<void> _uploadPrescription() async {
     final ImagePicker picker = ImagePicker();
     try {
@@ -360,26 +378,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AppBar(
-                title: Text(rx.fileName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                title: Text(rx.fileName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 leading: IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close, color: AppTheme.textColorPrimary),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(20.0),
-                child: rx.filePath != null
+                child: (rx.filePath != null && !kIsWeb)
                     ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(16),
                         child: SizedBox(
-                          height: 350,
+                          height: 320,
                           child: Image.file(
                             File(rx.filePath!),
                             fit: BoxFit.cover,
@@ -395,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text("Status: ${rx.status}", style: TextStyle(fontWeight: FontWeight.bold, color: rx.status == 'Verified' ? AppTheme.primaryColor : Colors.orange.shade800)),
-                    Text("Date: ${rx.uploadDate}", style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    Text("Date: ${rx.uploadDate}", style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 12)),
                   ],
                 ),
               ),
@@ -408,21 +427,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildMockRxImage() {
     return Container(
-      height: 250,
+      height: 240,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.backgroundColor,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.receipt_long_rounded, size: 64, color: AppTheme.primaryColor),
+          const Icon(Icons.receipt_long_rounded, size: 54, color: AppTheme.primaryColor),
           const SizedBox(height: 12),
-          const Text("Prescription Document Scan", style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text("Prescription Document Scan", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
           const SizedBox(height: 4),
-          Text("MediLoop AI Pharmacy verification active", style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+          const Text("MediLoop AI Pharmacy verification active", style: TextStyle(color: AppTheme.textColorSecondary, fontSize: 11.5)),
         ],
       ),
     );
@@ -433,10 +452,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Delete Prescription"),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Delete Prescription", style: TextStyle(fontWeight: FontWeight.bold)),
           content: Text("Are you sure you want to delete '${rx.fileName}'?"),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: AppTheme.textColorSecondary))),
             TextButton(
               onPressed: () {
                 _profileService.deletePrescription(rx.id);
@@ -445,7 +466,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SnackBar(content: Text('Prescription deleted')),
                 );
               },
-              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+              child: const Text("Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             )
           ],
         );
@@ -453,7 +474,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Preference Updates (Section 7) ---
   void _updatePreference(String type, bool val) {
     UserModel updated;
     switch (type) {
@@ -472,187 +492,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _profileService.updateUser(updated);
   }
 
-  // --- Setting Dialogs ---
-  void _showChangePasswordDialog() {
-    final formKey = GlobalKey<FormState>();
-    final oldPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Change Password", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: oldPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Current Password"),
-                  validator: (val) => val == null || val.isEmpty ? "Required" : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: newPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "New Password"),
-                  validator: (val) {
-                    if (val == null || val.isEmpty) return "Required";
-                    if (val.length < 6) return "Password must be at least 6 characters";
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: confirmPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Confirm New Password"),
-                  validator: (val) {
-                    if (val == null || val.isEmpty) return "Required";
-                    if (val != newPasswordController.text) return "Passwords do not match";
-                    return null;
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password updated successfully!')),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
-              child: const Text("Save"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showChangeLanguageDialog() {
-    final languages = ["English", "Hindi", "Marathi", "Spanish", "French"];
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Select Language", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: languages.map((lang) {
-              final isSelected = _user.language == lang;
-              return RadioListTile<String>(
-                value: lang,
-                groupValue: _user.language,
-                title: Text(lang, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                activeColor: AppTheme.primaryColor,
-                onChanged: (val) {
-                  if (val != null) {
-                    final updated = _user.copyWith(language: val);
-                    _profileService.updateUser(updated);
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Language changed to $val')),
-                    );
-                  }
-                },
-              );
-            }).toList(),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showAppTextDialog(String title, String content) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Text(
-              content,
-              style: const TextStyle(fontSize: 13, height: 1.5, color: Colors.black87),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Close"),
-            )
-          ],
-        );
-      },
-    );
-  }
-
-  // --- Confirm Logout ---
   void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Logout", style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text("Logout", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
           content: const Text("Are you sure you want to logout?"),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+              child: const Text("Cancel", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                // Navigate to login
-                Navigator.pushReplacementNamed(context, AppRoutes.login);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
-              child: const Text("Yes, Logout"),
-            )
-          ],
-        );
-      },
-    );
-  }
-
-  // --- Confirm Delete Account ---
-  void _showDeleteAccountDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text("Delete Account", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade700)),
-          content: const Text("Warning: Deleting your account will permanently remove all medical data, history, and address details. This action cannot be undone."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, AppRoutes.login);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Your account has been deleted successfully.')),
-                );
+                await AuthService().logout();
+                if (context.mounted) {
+                  Navigator.pushNamedAndRemoveUntil(context, AppRoutes.login, (route) => false);
+                }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
-              child: const Text("Confirm Delete"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                minimumSize: const Size(110, 44),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text("Yes, Logout"),
             )
           ],
         );
@@ -662,25 +529,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isFetchingProfile) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          centerTitle: true,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor)),
+              SizedBox(height: 16),
+              Text("Loading profile data from API...", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("Profile", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
-        backgroundColor: Colors.white,
+        title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textColorPrimary)),
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppTheme.textColorPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Column(
           children: [
             // 1. Profile Header
             ProfileHeader(
               user: _user,
               onEditPressed: () {
-                // Focus/scroll to personal details editable card and make it active
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Scroll down to modify Personal Details!')),
                 );
@@ -719,7 +611,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildSavedPrescriptionsSection(),
             const SizedBox(height: 20),
 
-            // 9. Saved Addresses (Multiple addresses list)
+            // 9. Saved Addresses
             _buildSavedAddressesSection(),
             const SizedBox(height: 20),
 
@@ -740,9 +632,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Helper Layout Builders ---
-
-  // Section 3: Delivery Address Card
   Widget _buildPrimaryAddressSection() {
     final homeAddress = _addresses.firstWhere(
       (a) => a.label.toLowerCase() == 'home',
@@ -759,15 +648,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,8 +671,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AppTheme.secondaryColor.withOpacity(0.4),
+                        shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.local_shipping_outlined,
@@ -795,7 +684,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       "Delivery Address",
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textColorPrimary,
                           ),
@@ -810,7 +699,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.all(20),
             child: _isEditingPrimaryAddress
@@ -861,7 +750,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: OutlinedButton(
                                 onPressed: () => setState(() => _isEditingPrimaryAddress = false),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.grey.shade700,
+                                  foregroundColor: AppTheme.textColorSecondary,
                                   side: BorderSide(color: Colors.grey.shade300),
                                   padding: const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -896,16 +785,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(homeAddress.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text(homeAddress.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.textColorPrimary)),
                             const SizedBox(height: 4),
                             Text(
                               homeAddress.address,
-                              style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.3),
+                              style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 13, height: 1.35),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               "${homeAddress.city}, ${homeAddress.state} - ${homeAddress.pincode}",
-                              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                              style: TextStyle(color: AppTheme.textColorSecondary.withOpacity(0.8), fontSize: 12),
                             ),
                           ],
                         ),
@@ -918,20 +807,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 5: Emergency Contact Card
   Widget _buildEmergencyContactSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -946,8 +834,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.red.shade50,
+                        shape: BoxShape.circle,
                       ),
                       child: Icon(
                         Icons.contact_emergency_outlined,
@@ -959,7 +847,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       "Emergency Contact",
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textColorPrimary,
                           ),
@@ -974,7 +862,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.all(20),
             child: _isEditingEmergency
@@ -1011,7 +899,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   });
                                 },
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.grey.shade700,
+                                  foregroundColor: AppTheme.textColorSecondary,
                                   side: BorderSide(color: Colors.grey.shade300),
                                   padding: const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -1051,12 +939,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             Text(
                               _user.emergencyRelationship,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textColorPrimary),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               _user.emergencyPhone,
-                              style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
+                              style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 13, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -1069,20 +957,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 7: Order Preferences
   Widget _buildOrderPreferencesSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1094,8 +981,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
+                    color: AppTheme.secondaryColor.withOpacity(0.4),
+                    shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.notifications_active_outlined,
@@ -1107,7 +994,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   "Order Preferences",
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontSize: 16,
+                        fontSize: 15.5,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textColorPrimary,
                       ),
@@ -1115,26 +1002,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Column(
               children: [
                 SwitchListTile(
                   value: _user.pushNotifications,
-                  title: const Text("Push Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  title: const Text("Push Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textColorPrimary)),
                   activeColor: AppTheme.primaryColor,
                   onChanged: (val) => _updatePreference('push', val),
                 ),
                 SwitchListTile(
                   value: _user.emailNotifications,
-                  title: const Text("Email Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  title: const Text("Email Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textColorPrimary)),
                   activeColor: AppTheme.primaryColor,
                   onChanged: (val) => _updatePreference('email', val),
                 ),
                 SwitchListTile(
                   value: _user.smsNotifications,
-                  title: const Text("SMS Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  title: const Text("SMS Notifications", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textColorPrimary)),
                   activeColor: AppTheme.primaryColor,
                   onChanged: (val) => _updatePreference('sms', val),
                 ),
@@ -1146,20 +1033,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 8: Saved Prescriptions
   Widget _buildSavedPrescriptionsSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1174,8 +1060,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AppTheme.secondaryColor.withOpacity(0.4),
+                        shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.description_outlined,
@@ -1187,7 +1073,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       "Saved Prescriptions",
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textColorPrimary,
                           ),
@@ -1208,7 +1094,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: _prescriptions.isEmpty
@@ -1217,7 +1103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: EdgeInsets.symmetric(vertical: 20),
                       child: Text(
                         "No prescriptions uploaded yet.",
-                        style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
+                        style: TextStyle(color: AppTheme.textColorSecondary, fontStyle: FontStyle.italic),
                       ),
                     ),
                   )
@@ -1240,20 +1126,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 9: Saved Addresses
   Widget _buildSavedAddressesSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1268,8 +1153,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AppTheme.secondaryColor.withOpacity(0.4),
+                        shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.bookmarks_outlined,
@@ -1281,7 +1166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       "Saved Addresses",
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textColorPrimary,
                           ),
@@ -1297,14 +1182,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: _addresses.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text("No addresses saved.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                      child: Text("No addresses saved.", style: TextStyle(color: AppTheme.textColorSecondary, fontStyle: FontStyle.italic)),
                     ),
                   )
                 : ListView.builder(
@@ -1313,7 +1198,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     itemCount: _addresses.length,
                     itemBuilder: (context, index) {
                       final addr = _addresses[index];
-                      // Assume the first Home address or first address in list is default primary
                       final isHome = addr.label.toLowerCase() == 'home';
                       final isDefault = isHome || (_addresses.indexWhere((a) => a.label.toLowerCase() == 'home') == -1 && index == 0);
                       return AddressCard(
@@ -1330,20 +1214,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 6: Account Settings List
   Widget _buildAccountSettingsSection() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1355,8 +1238,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
+                    color: AppTheme.secondaryColor.withOpacity(0.4),
+                    shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.settings_outlined,
@@ -1368,7 +1251,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   "Account Settings",
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontSize: 16,
+                        fontSize: 15.5,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textColorPrimary,
                       ),
@@ -1376,52 +1259,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          const Divider(height: 1, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
                 SettingsTile(
-                  leadingIcon: Icons.lock_outline_rounded,
-                  title: "Change Password",
-                  subtitle: "Update your login password",
-                  onTap: _showChangePasswordDialog,
+                  leadingIcon: Icons.settings_rounded,
+                  title: "App Settings",
+                  subtitle: "Manage notifications, language, and preferences",
+                  onTap: () => Navigator.pushNamed(context, AppRoutes.settings),
                 ),
                 SettingsTile(
-                  leadingIcon: Icons.translate_rounded,
-                  title: "Change Language",
-                  subtitle: "Current: ${_user.language}",
-                  onTap: _showChangeLanguageDialog,
-                ),
-                SettingsTile(
-                  leadingIcon: Icons.dark_mode_outlined,
-                  title: "Dark Mode Toggle",
-                  subtitle: _user.darkMode ? "Enabled" : "Disabled",
-                  trailing: Switch(
-                    value: _user.darkMode,
-                    activeColor: AppTheme.primaryColor,
-                    onChanged: (val) {
-                      _profileService.updateUser(_user.copyWith(darkMode: val));
-                    },
-                  ),
-                ),
-                SettingsTile(
-                  leadingIcon: Icons.policy_outlined,
-                  title: "Privacy Policy",
-                  onTap: () => _showAppTextDialog("Privacy Policy", "At MediLoop, your medical privacy is of paramount importance. This policy outlines how our autonomous pharmacy system processes data. All prescriptions uploaded are stored in encrypted, HIPAA-compliant databases. We use AI diagnostic scanners and verification models to analyze documents to prevent prescription misuse. We do not sell or lease patient records to third-party marketing brokers. You can request record purging at any time through our customer support desk."),
-                ),
-                SettingsTile(
-                  leadingIcon: Icons.gavel_outlined,
-                  title: "Terms & Conditions",
-                  onTap: () => _showAppTextDialog("Terms & Conditions", "Welcome to MediLoop. By using our application, you agree to comply with our Terms of Service. MediLoop provides an AI-driven online storefront that interacts with licensed pharmacy centers. All orders made via text or voice are subjected to review by registered pharmacists. MediLoop does not issue prescriptions directly; you must provide valid prescription documentation for all controlled drugs. In case of medical emergencies, please dial emergency phone numbers immediately instead of placing medication requests on this app."),
-                ),
-                SettingsTile(
-                  leadingIcon: Icons.delete_forever_outlined,
-                  iconColor: Colors.red.shade700,
-                  title: "Delete Account",
-                  textColor: Colors.red.shade700,
-                  subtitle: "Permanently erase your MediLoop account",
-                  onTap: _showDeleteAccountDialog,
+                  leadingIcon: Icons.info_outline_rounded,
+                  title: "About App",
+                  subtitle: "App version, developers, support and terms",
+                  onTap: () => Navigator.pushNamed(context, AppRoutes.aboutApp),
                 ),
               ],
             ),
@@ -1431,29 +1284,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 10: About MediLoop Card
   Widget _buildAboutMediLoopSection() {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade100),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
       ),
       child: Column(
         children: [
           Row(
             children: [
-              // Logo placeholder
               Container(
-                width: 50,
-                height: 50,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.12),
+                  color: AppTheme.secondaryColor.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 1.5),
                 ),
-                child: const Icon(Icons.blur_circular_rounded, color: AppTheme.primaryColor, size: 32),
+                child: const Icon(Icons.blur_circular_rounded, color: AppTheme.primaryColor, size: 30),
               ),
               const SizedBox(width: 14),
               const Expanded(
@@ -1474,7 +1325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       "Version 1.0.0",
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey,
+                        color: AppTheme.textColorSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1484,16 +1335,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          Text(
+          const Text(
             "MediLoop is an AI-powered autonomous pharmacy platform that enables customers to order medicines using voice or text, upload prescriptions, receive intelligent refill reminders, and experience seamless AI-assisted pharmacy services.",
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 12.5,
               height: 1.4,
-              color: Colors.grey.shade700,
+              color: AppTheme.textColorSecondary,
             ),
           ),
-          const Divider(height: 24, color: Colors.black12),
-          // Actions Buttons Grid
+          const Divider(height: 24, thickness: 0.5),
           Wrap(
             spacing: 12,
             runSpacing: 10,
@@ -1539,12 +1389,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text("Rate MediLoop", style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Text("Rate MediLoop", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary), textAlign: TextAlign.center),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("How has your autonomous pharmacy experience been?", textAlign: TextAlign.center, style: TextStyle(fontSize: 13)),
+                  const Text("How has your autonomous pharmacy experience been?", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: AppTheme.textColorSecondary)),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1567,7 +1418,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold)),
+                ),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
@@ -1575,7 +1429,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       SnackBar(content: Text('Thank you for rating us $rating stars!')),
                     );
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    minimumSize: const Size(100, 44),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                   child: const Text("Submit"),
                 )
               ],
@@ -1586,20 +1444,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Section 11: Logout button
   Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _showLogoutDialog,
-        icon: const Icon(Icons.logout_rounded, size: 20),
-        label: const Text("Log Out"),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.red.shade700,
-          foregroundColor: Colors.white,
-          elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+    return AnimatedButtonWrapper(
+      onPressed: _showLogoutDialog,
+      child: Container(
+        height: 52,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.red.shade700,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.red.shade700.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.logout_rounded, size: 20, color: Colors.white),
+            SizedBox(width: 8),
+            Text(
+              "Log Out",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
+            ),
+          ],
         ),
       ),
     );

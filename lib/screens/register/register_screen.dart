@@ -3,6 +3,10 @@ import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/custom_text_field.dart';
 
+import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
+import '../../routes/app_routes.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -20,6 +24,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _ageController = TextEditingController();
+  final _dobController = TextEditingController();
+  DateTime? _selectedDob;
+
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
@@ -27,9 +34,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _allergiesController = TextEditingController();
   final _emergencyPhoneController = TextEditingController();
 
+  bool _agreeToPrivacy = false;
   String? _selectedGender;
   String? _selectedRelationship;
-  bool _agreeToPrivacy = false;
+  bool _isLoading = false;
+  final _authService = AuthService();
 
   final List<String> _medicalConditions = [
     'Diabetes', 'Hypertension', 'Asthma', 'Heart Disease', 'Thyroid', 'None'
@@ -44,6 +53,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _ageController.dispose();
+    _dobController.dispose();
     _addressController.dispose();
     _cityController.dispose();
     _stateController.dispose();
@@ -53,12 +63,150 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _register() {
-    if (_formKey.currentState!.validate() && _agreeToPrivacy) {
+  Future<void> _selectDob(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDob ?? DateTime(2000, 1, 1),
+      firstDate: DateTime(1920),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.primaryColor,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      final now = DateTime.now();
+      int calculatedAge = now.year - picked.year;
+      if (now.month < picked.month || (now.month == picked.month && now.day < picked.day)) {
+        calculatedAge--;
+      }
+
+      setState(() {
+        _selectedDob = picked;
+        _dobController.text = "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+        _ageController.text = "$calculatedAge";
+      });
+    }
+  }
+
+  void _showPrivacyPolicyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Row(
+            children: [
+              Icon(Icons.privacy_tip_outlined, color: AppTheme.primaryColor),
+              SizedBox(width: 10),
+              Text("MediLoop Privacy Policy", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textColorPrimary)),
+            ],
+          ),
+          content: const SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Effective Date: August 2026\n\n"
+                  "1. Data Privacy & Confidentiality\n"
+                  "MediLoop protects your personal and health information using HIPAA-grade encryption and security headers.\n\n"
+                  "2. Use of Medical Data\n"
+                  "Your uploaded prescriptions, medical history, and allergy data are processed solely by our autonomous pharmacy AI agents to check drug interactions and ensure dosage safety.\n\n"
+                  "3. Emergency Contact Sharing\n"
+                  "Emergency contact numbers provided are strictly used for order safety verification and urgent clinical notifications.\n\n"
+                  "4. Data Protection Rights\n"
+                  "You maintain full ownership of your health records and can request profile updates or account deletion at any time.",
+                  style: TextStyle(fontSize: 13, height: 1.45, color: AppTheme.textColorSecondary),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _agreeToPrivacy = true;
+                });
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text("I Agree & Accept"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate() || !_agreeToPrivacy) return;
+
+    if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registration Successful!')),
+        const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.red),
       );
-      Navigator.pop(context);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await _authService.register(
+      name: _nameController.text,
+      email: _emailController.text,
+      password: _passwordController.text,
+      phoneNumber: _phoneController.text,
+      age: int.tryParse(_ageController.text) ?? 25,
+      gender: _selectedGender ?? 'Other',
+      address: _addressController.text,
+      city: _cityController.text,
+      state: _stateController.text,
+      pincode: _pincodeController.text,
+      medicalConditions: _selectedConditions,
+      allergies: _allergiesController.text,
+      emergencyRelationship: _selectedRelationship ?? 'Other',
+      emergencyPhone: _emergencyPhoneController.text,
+    );
+
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      // Auto-login after registration
+      final loginRes = await _authService.login(
+        _emailController.text,
+        _passwordController.text,
+      );
+      
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (loginRes['user'] != null) {
+        ProfileService().updateUser(loginRes['user']);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Registration Successful!'), backgroundColor: Colors.green),
+      );
+      Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (route) => false);
+    } else {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Registration failed'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -124,14 +272,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _buildSectionCard(
                 title: "Basic Information",
                 children: [
+                  GestureDetector(
+                    onTap: () => _selectDob(context),
+                    child: AbsorbPointer(
+                      child: CustomTextField(
+                        controller: _dobController,
+                        labelText: "Date of Birth (DD/MM/YYYY)",
+                        hintText: "Select your Date of Birth",
+                        prefixIcon: Icons.calendar_today_outlined,
+                        suffixIcon: const Icon(Icons.arrow_drop_down, color: AppTheme.primaryColor),
+                        validator: (v) => v == null || v.isEmpty ? "Please select Date of Birth" : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   CustomTextField(
                     controller: _ageController,
-                    labelText: AppStrings.age,
-                    hintText: "Enter age",
+                    labelText: "Calculated Age",
+                    hintText: "Calculated automatically from DOB",
                     prefixIcon: Icons.cake_outlined,
                     keyboardType: TextInputType.number,
-                    validator: (v) => v!.isEmpty ? "Required" : null,
+                    enabled: false,
+                    validator: (v) => v == null || v.isEmpty ? "Age required" : null,
                   ),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(
                       labelText: AppStrings.gender,
@@ -251,14 +415,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
               CheckboxListTile(
                 value: _agreeToPrivacy,
                 onChanged: (v) => setState(() => _agreeToPrivacy = v!),
-                title: const Text(AppStrings.privacyPolicyText),
+                title: Row(
+                  children: [
+                    const Text("I agree to the "),
+                    GestureDetector(
+                      onTap: _showPrivacyPolicyDialog,
+                      child: const Text(
+                        "Privacy Policy",
+                        style: TextStyle(
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 activeColor: AppTheme.primaryColor,
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: _agreeToPrivacy ? _register : null,
-                child: const Text(AppStrings.register),
+                onPressed: (_agreeToPrivacy && !_isLoading) ? _register : null,
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text(AppStrings.register),
               ),
               const SizedBox(height: 40),
             ],

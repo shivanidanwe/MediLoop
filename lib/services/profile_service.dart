@@ -1,6 +1,7 @@
 import '../models/user_model.dart';
 import '../models/address_model.dart';
 import '../models/prescription_model.dart';
+import 'auth_service.dart';
 
 class ProfileService {
   // Singleton pattern
@@ -8,9 +9,59 @@ class ProfileService {
   factory ProfileService() => _instance;
   ProfileService._internal();
 
-  UserModel _user = UserModel.mock;
-  final List<AddressModel> _addresses = AddressModel.mockAddresses;
-  final List<PrescriptionModel> _prescriptions = PrescriptionModel.mockPrescriptions;
+  UserModel _user = UserModel.empty;
+  final List<AddressModel> _addresses = [];
+  final List<PrescriptionModel> _prescriptions = [];
+
+  final AuthService _authService = AuthService();
+
+  // Set profile data directly from backend user JSON payload
+  void setProfileData(Map<String, dynamic> userMap) {
+    _user = UserModel.fromJson(userMap);
+    _addresses.clear();
+    if (userMap['addresses'] != null && userMap['addresses'] is List) {
+      for (var item in userMap['addresses']) {
+        if (item is Map<String, dynamic>) {
+          _addresses.add(AddressModel.fromJson(item));
+        }
+      }
+    }
+    _syncUserAddress();
+    _notifyListeners();
+  }
+
+  // Fetch API profile from backend if logged in
+  Future<void> fetchProfileFromServer() async {
+    final token = await _authService.getToken();
+    if (token == null || token.isEmpty) {
+      resetToMockData();
+      return;
+    }
+    final user = await _authService.getMe();
+    if (user != null && user.name.isNotEmpty) {
+      _user = user;
+      _notifyListeners();
+    } else {
+      resetToMockData();
+    }
+  }
+
+  void logout() {
+    _user = UserModel.empty;
+    _addresses.clear();
+    _prescriptions.clear();
+    _notifyListeners();
+  }
+
+  // Reset/populate with mock data synchronously for testing/debugging
+  void resetToMockData() {
+    _user = UserModel.mock;
+    _addresses.clear();
+    _addresses.addAll(AddressModel.mockAddresses);
+    _prescriptions.clear();
+    _prescriptions.addAll(PrescriptionModel.mockPrescriptions);
+    _notifyListeners();
+  }
 
   // Listeners to notify UI when changes occur (simple callback system)
   final List<void Function()> _listeners = [];

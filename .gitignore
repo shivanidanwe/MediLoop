@@ -43,3 +43,35 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+backend/.venv/
+.pytest_cache/
+
+# Environment Variables & Secrets
+.env
+*.env
+!.env.example
+
+# Node & Frontend (Pharmacy Dashboard)
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
+*.local
+dist.zip
+
+# Uploads & Media
+uploads/prescriptions/*
+!uploads/prescriptions/.gitkeep
+backend/uploads/prescriptions/*
+!backend/uploads/prescriptions/.gitkeep

@@ -17,11 +17,12 @@ class RefillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.orange.shade50,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.orange.shade200),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange.shade200),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -30,13 +31,21 @@ class RefillCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.history_outlined, color: Colors.orange),
-                const SizedBox(width: 8),
-                const Text(
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.history_outlined, color: Colors.orange.shade800, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Text(
                   "AI Refill Reminder",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange,
+                    fontSize: 13,
+                    color: Colors.orange.shade800,
                   ),
                 ),
               ],
@@ -45,14 +54,15 @@ class RefillCard extends StatelessWidget {
             Text(
               medicineName,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 16.5,
                 fontWeight: FontWeight.bold,
+                color: AppTheme.textColorPrimary,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               "Estimated to finish in $daysLeft days.",
-              style: TextStyle(color: Colors.grey.shade700),
+              style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 13),
             ),
             const SizedBox(height: 16),
             Row(
@@ -61,10 +71,11 @@ class RefillCard extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: onOrderAgain,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      minimumSize: const Size(0, 40),
+                      backgroundColor: AppTheme.primaryColor,
+                      minimumSize: const Size(0, 42),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text("Order Again"),
+                    child: const Text("Order Again", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -72,15 +83,16 @@ class RefillCard extends StatelessWidget {
                   child: OutlinedButton(
                     onPressed: onRemindLater,
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.orange),
+                      foregroundColor: AppTheme.primaryColor,
+                      side: const BorderSide(color: AppTheme.primaryColor),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      minimumSize: const Size(0, 40),
+                      minimumSize: const Size(0, 42),
                     ),
                     child: const Text(
                       "Remind Later",
-                      style: TextStyle(color: Colors.orange),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),
                 ),

@@ -32,25 +32,28 @@ class RefillReminderCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB).withOpacity(0.5),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(0.02),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
         ],
-        border: Border.all(color: Colors.grey.shade100),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onReorder,
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -80,7 +83,7 @@ class RefillReminderCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
 
                   // Medicine Info
                   Text(
@@ -89,34 +92,40 @@ class RefillReminderCard extends StatelessWidget {
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.textColorPrimary,
+                          letterSpacing: -0.3,
                         ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Text(
-                        "Estimated medicine remaining: ",
+                        "Estimated stock level: ",
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey.shade600,
+                              color: AppTheme.textColorSecondary,
                             ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: progressColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
+                          color: progressColor.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: progressColor.withOpacity(0.15),
+                            width: 1,
+                          ),
                         ),
                         child: Text(
-                          "${refill.daysRemaining} Days",
+                          "${refill.daysRemaining} Days left",
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: progressColor,
                                 fontWeight: FontWeight.bold,
+                                fontSize: 13,
                               ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
                   // Progress Bar Title/Info
                   Row(
@@ -125,8 +134,9 @@ class RefillReminderCard extends StatelessWidget {
                       Text(
                         "Stock Status",
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade500,
-                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textColorSecondary.withOpacity(0.8),
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.2,
                             ),
                       ),
                       Text(
@@ -149,30 +159,30 @@ class RefillReminderCard extends StatelessWidget {
                       return Stack(
                         children: [
                           Container(
-                            height: 10,
+                            height: 12,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(5),
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                           ),
                           FractionallySizedBox(
                             widthFactor: value,
                             child: Container(
-                              height: 10,
+                              height: 12,
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    progressColor.withOpacity(0.8),
+                                    progressColor.withOpacity(0.7),
                                     progressColor,
                                   ],
                                 ),
-                                borderRadius: BorderRadius.circular(5),
+                                borderRadius: BorderRadius.circular(6),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: progressColor.withOpacity(0.2),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
+                                    color: progressColor.withOpacity(0.15),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),
@@ -182,7 +192,7 @@ class RefillReminderCard extends StatelessWidget {
                       );
                     },
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
 
                   // Reorder Action Button
                   SizedBox(
@@ -193,9 +203,9 @@ class RefillReminderCard extends StatelessWidget {
                         backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       child: const Row(

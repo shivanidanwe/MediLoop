@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mediloop/models/user_model.dart';
 import 'package:mediloop/models/address_model.dart';
 import 'package:mediloop/models/prescription_model.dart';
 import 'package:mediloop/services/profile_service.dart';
@@ -10,6 +9,7 @@ void main() {
 
     setUp(() {
       profileService = ProfileService();
+      profileService.resetToMockData();
     });
 
     test('UserModel mock values are loaded correctly', () {

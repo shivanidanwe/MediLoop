@@ -6,6 +6,10 @@ class Medicine {
   final double rating;
   final String imageUrl;
   final bool isAvailable;
+  final String strength; // e.g. "650 mg", "10 ml"
+  final String dosageForm; // e.g. "Tablet", "Syrup", "Capsule"
+  final String manufacturer; // e.g. "Cipla Ltd", "GlaxoSmithKline"
+  final bool prescriptionRequired;
 
   Medicine({
     required this.id,
@@ -15,6 +19,10 @@ class Medicine {
     required this.rating,
     required this.imageUrl,
     this.isAvailable = true,
+    required this.strength,
+    required this.dosageForm,
+    required this.manufacturer,
+    required this.prescriptionRequired,
   });
 }
 

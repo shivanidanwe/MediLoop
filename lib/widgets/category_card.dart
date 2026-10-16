@@ -17,21 +17,25 @@ class CategoryCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 80,
+        width: 84,
         margin: const EdgeInsets.only(right: 12),
         child: Column(
           children: [
             Container(
-              height: 60,
-              width: 60,
+              height: 64,
+              width: 64,
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
+                color: AppTheme.secondaryColor.withOpacity(0.4), // Soft Mint circle
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  width: 1,
+                ),
               ),
               child: Icon(
                 _getIconData(category.iconPath),
                 color: AppTheme.primaryColor,
-                size: 28,
+                size: 26,
               ),
             ),
             const SizedBox(height: 8),
@@ -39,9 +43,10 @@ class CategoryCard extends StatelessWidget {
               category.name,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
                 color: AppTheme.textColorPrimary,
+                letterSpacing: -0.1,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

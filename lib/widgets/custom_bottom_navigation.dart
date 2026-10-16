@@ -17,22 +17,22 @@ class CustomBottomNavigation extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 24,
+            offset: const Offset(0, -6),
           ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: Container(
-          height: 80,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          height: 88,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -82,7 +82,13 @@ class CustomBottomNavigation extends StatelessWidget {
     bool isSpecial = false,
   }) {
     final bool isSelected = currentIndex == index;
-    final Color color = isSelected ? AppTheme.primaryColor : Colors.grey.shade500;
+    
+    // Normal color logic
+    final Color iconColor = isSpecial
+        ? (isSelected ? Colors.white : AppTheme.textColorSecondary)
+        : (isSelected ? AppTheme.primaryColor : AppTheme.textColorSecondary.withOpacity(0.7));
+        
+    final Color labelColor = isSelected ? AppTheme.primaryColor : AppTheme.textColorSecondary.withOpacity(0.8);
 
     return Expanded(
       child: GestureDetector(
@@ -95,34 +101,57 @@ class CustomBottomNavigation extends StatelessWidget {
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeInOut,
               padding: EdgeInsets.symmetric(
-                horizontal: isSpecial ? 16 : 20,
-                vertical: 8,
+                horizontal: isSpecial ? 12 : 20,
+                vertical: isSpecial ? 12 : 8,
               ),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppTheme.primaryColor.withOpacity(0.08)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-              ),
+              decoration: isSpecial
+                  ? BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isSelected
+                          ? const LinearGradient(
+                              colors: [Color(0xFF164632), Color(0xFF2E7D5B)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            )
+                          : LinearGradient(
+                              colors: [Colors.grey.shade100, Colors.grey.shade200],
+                            ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : [],
+                    )
+                  : BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.secondaryColor.withOpacity(0.7) // Mint style
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
               child: AnimatedScale(
-                scale: isSelected ? 1.15 : 1.0,
+                scale: isSelected ? 1.12 : 1.0,
                 duration: const Duration(milliseconds: 200),
                 child: Icon(
                   isSelected ? activeIcon : inactiveIcon,
-                  color: color,
-                  size: isSpecial ? 26 : 24,
+                  color: iconColor,
+                  size: isSpecial ? 24 : 22,
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: labelColor,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                letterSpacing: -0.1,
               ),
             ),
           ],
