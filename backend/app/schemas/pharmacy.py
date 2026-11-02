@@ -54,3 +54,16 @@ class PharmacyDetail(Pharmacy):
 
 class PharmacyResponse(Pharmacy):
     pass
+
+class PharmacyCustomerResponse(BaseModel):
+    id: int
+    name: str
+    phone: str
+    email: str
+    address: str
+    orders: int
+    total_orders: int
+    last_order: str
+    last_order_date: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

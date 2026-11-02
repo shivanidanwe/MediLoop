@@ -7,7 +7,9 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    pharmacist_id = Column(Integer, ForeignKey("pharmacists.id", ondelete="CASCADE"), nullable=True, index=True)
+    pharmacy_id = Column(Integer, ForeignKey("pharmacies.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     notification_type = Column(String, default="SYSTEM_ALERT", nullable=False)
@@ -17,3 +19,5 @@ class Notification(Base):
 
     # Relationships
     user = relationship("User", backref="notifications")
+    pharmacist = relationship("Pharmacist", backref="notifications")
+    pharmacy = relationship("Pharmacy", backref="notifications")

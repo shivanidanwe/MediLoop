@@ -48,11 +48,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a plain password against the hashed password.
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
 
-def create_access_token(subject: Union[str, Any], expires_delta: Union[timedelta, None] = None) -> str:
+def create_access_token(
+    subject: Union[str, Any], 
+    expires_delta: Union[timedelta, None] = None,
+    role: Union[str, None] = None
+) -> str:
     """
-    Generate a secure JWT token for authenticated subjects with claims.
+    Generate a secure JWT token for authenticated subjects with claims and role.
     """
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -65,6 +72,8 @@ def create_access_token(subject: Union[str, Any], expires_delta: Union[timedelta
         "iat": datetime.now(timezone.utc),
         "type": "access_token"
     }
+    if role:
+        to_encode["role"] = role
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
@@ -72,10 +81,12 @@ def decode_access_token(token: str) -> Union[dict, None]:
     """
     Decode and verify a JWT token. Returns payload dict if valid, otherwise None.
     """
+    if not token or not isinstance(token, str):
+        return None
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if payload.get("type") != "access_token":
             return None
         return payload
-    except JWTError:
+    except Exception:
         return None

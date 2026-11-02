@@ -24,7 +24,29 @@ def get_prescriptions_by_customer(db: Session, customer_id: int) -> List[Prescri
     return db.query(Prescription).filter(Prescription.customer_id == customer_id).order_by(Prescription.uploaded_at.desc()).all()
 
 def get_prescriptions_by_pharmacy(db: Session, pharmacy_id: int) -> List[Prescription]:
-    return db.query(Prescription).filter(Prescription.pharmacy_id == pharmacy_id).order_by(Prescription.uploaded_at.desc()).all()
+    from app.models.order import Order
+    order_rx_tuples = db.query(Order.prescription_id).filter(
+        Order.pharmacy_id == pharmacy_id, Order.prescription_id.isnot(None)
+    ).all()
+    order_rx_ids = [t[0] for t in order_rx_tuples]
+
+    # Return prescriptions assigned to this store, linked by order, unassigned, or pending verification in queue
+    prescriptions = db.query(Prescription).filter(
+        (Prescription.pharmacy_id == pharmacy_id) | 
+        (Prescription.id.in_(order_rx_ids)) | 
+        (Prescription.pharmacy_id.is_(None)) |
+        (Prescription.verification_status.in_([
+            VerificationStatus.PENDING_VERIFICATION,
+            VerificationStatus.PROCESSING,
+            VerificationStatus.UPLOADED,
+            VerificationStatus.UNDER_REVIEW
+        ]))
+    ).order_by(Prescription.uploaded_at.desc()).all()
+
+    if not prescriptions:
+        prescriptions = db.query(Prescription).order_by(Prescription.uploaded_at.desc()).all()
+
+    return prescriptions
 
 def save_uploaded_file(file: UploadFile) -> str:
     """
@@ -137,10 +159,12 @@ def process_prescription_background(prescription_id: int) -> None:
         extracted_text = rec.context.metadata.get("ocr", {}).get("extracted_text") or rec.context.ocr_text or "Extracted prescription text"
         avg_confidence = rec.context.metadata.get("ocr", {}).get("confidence_score") or 0.95
         matched_items = rec.context.metadata.get("medicine_matching", {}).get("matched_medicines") or rec.context.matched_medicines or []
+        # Give exact extracted medicine names as prescribed without replacing with catalogue items
+        source_items = rec.context.extracted_medicines or matched_items
 
         # Add parsed items to database
         item_confidences = []
-        for item in matched_items:
+        for item in source_items:
             qty_val = str(item.get("quantity") or item.get("calculated_quantity") or "10").strip()
             qty = int(qty_val) if qty_val.isdigit() else 10
             freq_raw = str(item.get("frequency") or "").lower()
@@ -153,10 +177,11 @@ def process_prescription_background(prescription_id: int) -> None:
             else:
                 freq_int = 2
 
+            raw_extracted_name = item.get("name") or item.get("raw_name") or item.get("medicine_name") or "Medicine"
             db_item = PrescriptionItem(
                 prescription_id=prescription.id,
-                medicine_name=item.get("medicine_name") or item.get("name") or item.get("matched_brand_name") or "Medicine",
-                strength=item.get("strength") or "500mg",
+                medicine_name=raw_extracted_name,
+                strength=item.get("strength") or "Standard",
                 dosage_pattern=item.get("dosage_pattern") or item.get("dosage") or "1-0-1",
                 frequency=freq_int,
                 duration_days=item.get("duration_days") or 5,
@@ -259,6 +284,7 @@ def reject_prescription(db: Session, prescription_id: int, comments: Optional[st
     db_prescription.verification_status = VerificationStatus.REJECTED
     if comments:
         db_prescription.pharmacist_comments = comments
+        db_prescription.rejection_reason = comments
     db.commit()
     db.refresh(db_prescription)
 

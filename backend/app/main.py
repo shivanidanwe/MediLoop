@@ -24,12 +24,13 @@ from app.models.pharmacy_inventory import PharmacyInventory
 from app.models.cart import Cart, CartItem
 from app.models.order import Order, OrderItem
 from app.models.notification import Notification
+from app.models.purchase_order import SupplierPurchaseOrder
 
 # Auto-create database tables
 Base.metadata.create_all(bind=engine)
 
 # Import routes
-from app.api import auth, users, pharmacies, pharmacists, prescriptions, medicines, orders, notifications, ai, inventory, cart
+from app.api import auth, users, pharmacies, pharmacists, prescriptions, medicines, orders, notifications, ai, inventory, cart, orchestration
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,8 @@ app.include_router(cart.router, prefix="/api/v1")
 app.include_router(orders.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(ai.router, prefix="/api/v1")
+app.include_router(orchestration.router, prefix="/api/v1")
+app.include_router(orchestration.router, prefix="/api")
 
 # Base health & root endpoints
 @app.get("/")

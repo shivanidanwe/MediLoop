@@ -16,6 +16,7 @@ from app.agents.exceptions import (
 from app.agents.execution_log import AgentExecutionLogger, ExecutionRecord
 from app.agents.health_companion_agent import AIHealthCompanionAgent
 from app.agents.inventory_agent import InventoryAvailabilityAgent
+from app.agents.procurement_agent import ProcurementAgent
 from app.agents.medicine_matching_agent import MedicineMatchingAgent
 from app.agents.notification_agent import NotificationAgent
 from app.agents.ocr_agent import BaseOCRProvider, MedicalVisionOCRProvider, OCRAgent
@@ -53,6 +54,7 @@ __all__ = [
     "MedicineMatchingAgent",
     "DrugSafetyAgent",
     "InventoryAvailabilityAgent",
+    "ProcurementAgent",
     "OrderRecommendationAgent",
     "RefillReminderAgent",
     "NotificationAgent",

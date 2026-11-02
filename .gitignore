@@ -75,3 +75,6 @@ uploads/prescriptions/*
 !uploads/prescriptions/.gitkeep
 backend/uploads/prescriptions/*
 !backend/uploads/prescriptions/.gitkeep
+
+backend/uploads/procurement/*
+!backend/uploads/procurement/.gitkeep

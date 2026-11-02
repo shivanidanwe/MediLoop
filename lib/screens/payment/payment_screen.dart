@@ -5,6 +5,7 @@ import '../../routes/app_routes.dart';
 import '../../models/pharmacy_model.dart';
 import '../../models/address_model.dart';
 import '../../services/pharmacy_service.dart';
+import '../../services/profile_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -16,6 +17,7 @@ class PaymentScreen extends StatefulWidget {
 class _PaymentScreenState extends State<PaymentScreen> {
   final CartService _cartService = CartService();
   final PharmacyService _pharmacyService = PharmacyService();
+  final ProfileService _profileService = ProfileService();
 
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _searchController = TextEditingController();
@@ -132,7 +134,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _isPlacingOrder = true;
     });
 
-    final orderId = await _cartService.placeOrder();
+    final addressId = _cartService.selectedAddress?.id != null 
+        ? int.tryParse(_cartService.selectedAddress!.id) ?? 1 
+        : 1;
+    final pharmacyId = int.tryParse(_selectedPharmacy?.pharmacyId ?? "1") ?? 1;
+    final rxId = int.tryParse(_cartService.prescriptionId ?? "");
+
+    final orderId = await _cartService.placeOrder(
+      pharmacyId: pharmacyId,
+      addressId: addressId,
+      paymentMethod: "COD",
+      prescriptionId: rxId,
+    );
 
     if (mounted) {
       setState(() {
@@ -443,8 +456,205 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: _showAddressSelectionSheet,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              backgroundColor: AppTheme.secondaryColor.withOpacity(0.3),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.edit_location_alt_rounded, size: 16, color: AppTheme.primaryColor),
+            label: const Text(
+              "Change",
+              style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  void _showAddressSelectionSheet() {
+    final addresses = _profileService.getAddresses();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 38,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Select Delivery Address",
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textColorPrimary),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_location_alt_outlined, color: AppTheme.primaryColor),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _addNewAddressPrompt();
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (addresses.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text("No addresses found. Add one to continue.", style: TextStyle(color: AppTheme.textColorSecondary)),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: addresses.length,
+                          itemBuilder: (context, index) {
+                            final addr = addresses[index];
+                            final isSelected = _cartService.selectedAddress?.id == addr.id;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: isSelected ? AppTheme.secondaryColor.withOpacity(0.2) : Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isSelected ? AppTheme.primaryColor : Colors.grey.shade200,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: ListTile(
+                                leading: Icon(
+                                  addr.label.toLowerCase() == 'home' ? Icons.home_rounded : Icons.work_rounded,
+                                  color: isSelected ? AppTheme.primaryColor : Colors.grey.shade500,
+                                ),
+                                title: Text(addr.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                subtitle: Text("${addr.address}, ${addr.city} (${addr.pincode})", style: const TextStyle(fontSize: 12)),
+                                trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor) : null,
+                                onTap: () {
+                                  _cartService.selectAddress(addr);
+                                  _loadPharmacies(); // Re-sort pharmacies for this pincode
+                                  Navigator.pop(context);
+                                  setState(() {});
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _addNewAddressPrompt() {
+    final streetCtrl = TextEditingController();
+    final cityCtrl = TextEditingController(text: "Bengaluru");
+    final stateCtrl = TextEditingController(text: "Karnataka");
+    final pincodeCtrl = TextEditingController(text: "560103");
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Add Delivery Address", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: streetCtrl,
+                    decoration: const InputDecoration(labelText: "Flat / Street Address"),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? "Required" : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: cityCtrl,
+                    decoration: const InputDecoration(labelText: "City"),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? "Required" : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: stateCtrl,
+                    decoration: const InputDecoration(labelText: "State"),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? "Required" : null,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: pincodeCtrl,
+                    decoration: const InputDecoration(labelText: "Pincode"),
+                    keyboardType: TextInputType.number,
+                    validator: (v) => (v == null || v.trim().length != 6) ? "Enter 6-digit pincode" : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final newAddr = AddressModel(
+                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    label: "Home",
+                    address: streetCtrl.text.trim(),
+                    city: cityCtrl.text.trim(),
+                    state: stateCtrl.text.trim(),
+                    pincode: pincodeCtrl.text.trim(),
+                  );
+                  await _profileService.addAddress(newAddr);
+                  _cartService.selectAddress(newAddr);
+                  await _loadPharmacies();
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    setState(() {});
+                  }
+                }
+              },
+              child: const Text("Save & Select"),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -932,15 +1142,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ],
           ),
-          child: Row(
+          child: const Row(
             children: [
               Checkbox(
                 value: true,
                 onChanged: null,
                 activeColor: AppTheme.primaryColor,
               ),
-              const SizedBox(width: 8),
-              const Expanded(
+              SizedBox(width: 8),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1052,12 +1262,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         ],
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  "Place Order",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: blockCheckout ? Colors.grey.shade600 : Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    "Place Order",
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: blockCheckout ? Colors.grey.shade600 : Colors.white,
+                    ),
                   ),
                 ),
               ),

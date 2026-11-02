@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
-import '../../models/medicine_model.dart';
 import '../../models/address_model.dart';
 import '../../services/cart_service.dart';
 import '../../services/profile_service.dart';
@@ -321,7 +320,7 @@ class _CartScreenState extends State<CartScreen> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: cartItems.isEmpty
+        child: (cartItems.isEmpty && _cartService.extractedPrescriptionText == null)
             ? _buildEmptyState()
             : Column(
                 children: [
@@ -334,21 +333,28 @@ class _CartScreenState extends State<CartScreen> {
                           // 1. Prescription Required Warnings & Status
                           if (_cartService.requiresPrescription) _buildPrescriptionStatusSection(),
 
-                          // 2. Cart Items list
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: cartItems.length,
-                            itemBuilder: (context, index) {
-                              return _buildCartItemCard(cartItems[index]);
-                            },
-                          ),
+                          // 2. Extracted Prescription Banner with Raw OCR Text & Inventory Notices
+                          if ((_cartService.extractedPrescriptionText != null && _cartService.extractedPrescriptionText!.isNotEmpty) || _cartService.unavailableMedicines.isNotEmpty)
+                            _buildExtractedPrescriptionCard(),
 
-                          // 3. Delivery Address Section
-                          _buildDeliveryAddressSection(),
+                          // 3. Cart Items list
+                          if (cartItems.isNotEmpty)
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: cartItems.length,
+                              itemBuilder: (context, index) {
+                                return _buildCartItemCard(cartItems[index]);
+                              },
+                            )
+                          else
+                            _buildEmptyWithPrescriptionAction(),
 
-                          // 4. Order Summary panel
-                          _buildOrderSummarySection(),
+                          // 4. Delivery Address Section
+                          if (cartItems.isNotEmpty) _buildDeliveryAddressSection(),
+
+                          // 5. Order Summary panel
+                          if (cartItems.isNotEmpty) _buildOrderSummarySection(),
                           const SizedBox(height: 24),
                         ],
                       ),
@@ -356,7 +362,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
 
                   // Checkout Floating Bar
-                  _buildCheckoutBar(),
+                  if (cartItems.isNotEmpty) _buildCheckoutBar(),
                 ],
               ),
       ),
@@ -548,6 +554,283 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
+  Widget _buildExtractedPrescriptionCard() {
+    final hasItems = _cartService.items.isNotEmpty;
+    final isVerified = _cartService.prescriptionStatus == "Verified" && hasItems;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isVerified ? AppTheme.primaryColor.withOpacity(0.25) : Colors.orange.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isVerified ? AppTheme.primaryColor : Colors.orange).withOpacity(0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: (isVerified ? AppTheme.primaryColor : Colors.orange).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isVerified ? Icons.receipt_long_rounded : Icons.hourglass_top_rounded,
+                  color: isVerified ? AppTheme.primaryColor : Colors.orange.shade800,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _cartService.prescriptionId != null
+                          ? "Prescription #${_cartService.prescriptionId} (${isVerified ? 'AI Extracted' : 'Uploaded'})"
+                          : "Prescription Document",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppTheme.textColorPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasItems
+                          ? "Prescription transcribed & medicines added to cart"
+                          : "Awaiting pharmacist review - no medicines auto-extracted",
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textColorSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: (isVerified ? const Color(0xFF2E7D32) : Colors.orange.shade800).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isVerified ? "Verified" : "Pending Review",
+                  style: TextStyle(
+                    color: isVerified ? const Color(0xFF2E7D32) : Colors.orange.shade800,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_cartService.unavailableMedicines.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFD97706)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Prescription Inventory Notice",
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFFB45309)),
+                        ),
+                        const SizedBox(height: 4),
+                        ..._cartService.unavailableMedicines.map((msg) => Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            "• $msg",
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF92400E), height: 1.3),
+                          ),
+                        )),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_cartService.extractedPrescriptionText != null && _cartService.extractedPrescriptionText!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildExactPrescriptionReportView(_cartService.extractedPrescriptionText!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExactPrescriptionReportView(String report) {
+    if (report.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final lines = report.split('\n');
+    final spans = <TextSpan>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+        // Section Header
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+            color: Color(0xFF0F172A),
+            height: 1.8,
+          ),
+        ));
+      } else if (trimmed.contains(':') && !RegExp(r'^\d+\.').hasMatch(trimmed)) {
+        // Clinical Detail Field
+        final colonIdx = line.indexOf(':');
+        final label = line.substring(0, colonIdx + 1);
+        final value = line.substring(colonIdx + 1);
+        final isMissing = value.toLowerCase().contains('not mentioned in prescription') || value.toLowerCase().contains('unable to read clearly');
+
+        spans.add(TextSpan(
+          text: label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: Color(0xFF334155),
+            height: 1.5,
+          ),
+        ));
+        spans.add(TextSpan(
+          text: '$value\n',
+          style: TextStyle(
+            fontWeight: isMissing ? FontWeight.w400 : FontWeight.w500,
+            fontSize: 12,
+            color: isMissing ? const Color(0xFF64748B) : const Color(0xFF0F172A),
+            fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+            height: 1.5,
+          ),
+        ));
+      } else if (RegExp(r'^\d+\.').hasMatch(trimmed)) {
+        // Numbered Medicine Item
+        final isNeedsVerification = trimmed.toLowerCase().contains('(needs verification)');
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 11.5,
+            color: isNeedsVerification ? const Color(0xFFD97706) : const Color(0xFF1E293B),
+            height: 1.6,
+          ),
+        ));
+      } else {
+        // Normal text or empty space
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 12,
+            color: Color(0xFF334155),
+            height: 1.5,
+          ),
+        ));
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.0),
+      ),
+      child: SelectableText.rich(
+        TextSpan(children: spans),
+      ),
+    );
+  }
+
+  Widget _buildEmptyWithPrescriptionAction() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.info_outline_rounded, color: Colors.orange.shade800, size: 32),
+          const SizedBox(height: 10),
+          const Text(
+            "No Medicines in Cart",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textColorPrimary),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "Your prescription was uploaded but no medicines could be auto-extracted. You can browse and search medicines to add them to your cart, or upload a clearer photo.",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppTheme.textColorSecondary, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pushNamed(context, AppRoutes.uploadPrescription),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text("Re-upload Rx"),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text("Browse Catalog", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildCartItemCard(CartItem item) {
     final med = item.medicine;
     IconData dosageIcon;
@@ -655,13 +938,20 @@ class _CartScreenState extends State<CartScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "₹${med.price.toStringAsFixed(2)} / unit",
-                      style: TextStyle(color: AppTheme.textColorSecondary.withOpacity(0.9), fontSize: 12.5),
+                    Flexible(
+                      child: Text(
+                        "₹${med.price.toStringAsFixed(2)} / unit",
+                        style: TextStyle(color: AppTheme.textColorSecondary.withOpacity(0.9), fontSize: 12.5),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    Text(
-                      "Total: ₹${item.totalPrice.toStringAsFixed(2)}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.textColorPrimary),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "Total: ₹${item.totalPrice.toStringAsFixed(2)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.textColorPrimary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -734,15 +1024,20 @@ class _CartScreenState extends State<CartScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.local_shipping_outlined, color: AppTheme.primaryColor, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    "Delivery Address",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.textColorPrimary),
-                  ),
-                ],
+              const Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.local_shipping_outlined, color: AppTheme.primaryColor, size: 20),
+                    SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        "Delivery Address",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.textColorPrimary),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               TextButton(
                 onPressed: _showAddressSelectionSheet,
@@ -894,9 +1189,13 @@ class _CartScreenState extends State<CartScreen> {
               children: [
                 const Text("Total Payable", style: TextStyle(color: AppTheme.textColorSecondary, fontSize: 12)),
                 const SizedBox(height: 2),
-                Text(
-                  "₹${_cartService.grandTotal.toStringAsFixed(2)}",
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryColor, letterSpacing: -0.5),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "₹${_cartService.grandTotal.toStringAsFixed(2)}",
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryColor, letterSpacing: -0.5),
+                  ),
                 ),
               ],
             ),
@@ -926,15 +1225,21 @@ class _CartScreenState extends State<CartScreen> {
                         ],
                 ),
                 alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      "Proceed to Payment",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: blockCheckout ? Colors.grey.shade600 : Colors.white,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          "Proceed to Payment",
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: blockCheckout ? Colors.grey.shade600 : Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),

@@ -66,9 +66,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   void _processAIResponse(String userText) async {
-    final query = userText.toLowerCase();
     String replyText = "";
-    Medicine? suggestedMedicine;
+    Map<String, dynamic>? orderDraft;
 
     try {
       final token = await AuthService().getToken();
@@ -80,70 +79,15 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        replyText = data['reply'] ?? replyText;
-      }
-    } catch (_) {}
-
-    if (replyText.isEmpty) {
-      if (query.contains("crocin") || query.contains("paracetamol") || query.contains("fever")) {
-        replyText = "I found Crocin 650 (Antipyretic & Pain Relief) matching your symptoms. Here are the details:";
-        suggestedMedicine = Medicine(
-          id: '1',
-          name: 'Crocin 650',
-          description: 'Provides relief from pain and fever by blocking chemical messengers in the brain.',
-          price: 35.0,
-          rating: 4.5,
-          imageUrl: 'tablet',
-          strength: '650 mg',
-          dosageForm: 'Tablet',
-          manufacturer: 'GlaxoSmithKline plc',
-          prescriptionRequired: false,
-        );
-      } else if (query.contains("dolo") || query.contains("pain")) {
-        replyText = "Here is Dolo 650, which is commonly recommended for fever and body pain:";
-        suggestedMedicine = Medicine(
-          id: '3',
-          name: 'Dolo 650',
-          description: 'Used for fever and mild-to-moderate pain relief. Highly recommended antipyretic.',
-          price: 30.0,
-          rating: 4.7,
-          imageUrl: 'tablet',
-          strength: '650 mg',
-          dosageForm: 'Tablet',
-          manufacturer: 'Micro Labs Ltd',
-          prescriptionRequired: false,
-        );
-      } else if (query.contains("amoxicillin") || query.contains("antibiotic")) {
-        replyText = "I found Amoxicillin 500 capsule. Note that this requires a valid prescription upload:";
-        suggestedMedicine = Medicine(
-          id: '4',
-          name: 'Amoxicillin 500',
-          description: 'Broad-spectrum penicillin antibiotic used to treat bacterial infections.',
-          price: 120.0,
-          rating: 4.6,
-          imageUrl: 'capsule',
-          strength: '500 mg',
-          dosageForm: 'Capsule',
-          manufacturer: 'Alkem Laboratories',
-          prescriptionRequired: true,
-        );
-      } else if (query.contains("refill") || query.contains("reorder")) {
-        replyText = "Would you like me to auto-reorder your previous prescription of Crocin 650?";
-        suggestedMedicine = Medicine(
-          id: '1',
-          name: 'Crocin 650',
-          description: 'Provides relief from pain and fever by blocking chemical messengers in the brain.',
-          price: 35.0,
-          rating: 4.5,
-          imageUrl: 'tablet',
-          strength: '650 mg',
-          dosageForm: 'Tablet',
-          manufacturer: 'GlaxoSmithKline plc',
-          prescriptionRequired: false,
-        );
+        replyText = data['reply'] ?? "";
+        if (data['order_draft'] != null) {
+          orderDraft = Map<String, dynamic>.from(data['order_draft']);
+        }
       } else {
-        replyText = "I am your Smart Pharmacy Assistant. Ask me to find medicines (e.g. 'Order Crocin 650', 'Amoxicillin') or help with refills.";
+        replyText = "I encountered an error connecting to MediLoop assistant. Please try again.";
       }
+    } catch (_) {
+      replyText = "Unable to reach MediLoop services. Please check your network connection.";
     }
 
     if (!mounted) return;
@@ -153,68 +97,172 @@ class _AIChatScreenState extends State<AIChatScreen> {
       _messages.add(_ChatMessage(
         text: replyText,
         isUser: false,
-        suggestedMedicine: suggestedMedicine,
+        orderDraft: orderDraft,
       ));
     });
     _scrollToBottom();
   }
 
+  Future<void> _confirmOrderDraft(String draftId) async {
+    setState(() {
+      _isTyping = true;
+    });
+
+    try {
+      final token = await AuthService().getToken();
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/ai/orders/confirm'),
+        headers: ApiConfig.headers(token),
+        body: jsonEncode({
+          'draft_id': draftId,
+          'idempotency_key': 'key_$draftId',
+          'payment_method': 'COD'
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final orderNum = data['order_number'] ?? 'N/A';
+        final total = (data['total_amount'] ?? 0.0).toStringAsFixed(2);
+        setState(() {
+          _isTyping = false;
+          _messages.add(_ChatMessage(
+            text: "✅ Order #$orderNum has been placed successfully for ₹$total! It is now pending pharmacist verification.",
+            isUser: false,
+          ));
+        });
+      } else {
+        final err = jsonDecode(response.body);
+        setState(() {
+          _isTyping = false;
+          _messages.add(_ChatMessage(
+            text: "Failed to place order: ${err['detail'] ?? 'Verification failed'}",
+            isUser: false,
+          ));
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isTyping = false;
+        _messages.add(_ChatMessage(
+          text: "Network error while placing order. Please try again.",
+          isUser: false,
+        ));
+      });
+    }
+    _scrollToBottom();
+  }
+
   void _simulateVoiceInput() {
+    final voiceTextController = TextEditingController(text: "Order my diabetes medicine");
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
-        Future.delayed(const Duration(milliseconds: 1800), () {
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-            _addUserMessage("I need to order Crocin 650");
-          }
-        });
-
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Modal drag indicator
-                Container(
-                  width: 38,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+      builder: (modalContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(modalContext).viewInsets.bottom,
+            top: 24,
+            left: 20,
+            right: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const Text(
-                  "Listening for Voice Query...",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: AppTheme.textColorPrimary,
-                    letterSpacing: -0.3,
-                  ),
+              ),
+              const Text(
+                "Voice Speech Recognition",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  color: AppTheme.textColorPrimary,
                 ),
-                const SizedBox(height: 32),
-                
-                // Pulsing voice animation
-                const VoicePulse(),
-                const SizedBox(height: 32),
-                
-                Text(
-                  "Say 'Order Crocin 650' or 'Show antibiotic options'",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppTheme.textColorSecondary,
-                    fontSize: 13,
-                  ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                "Review or edit your spoken message before sending to the assistant.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: voiceTextController,
+                maxLines: 2,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: "Recognized Voice Text (Editable)",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ActionChip(
+                    label: const Text("Order diabetes medicine"),
+                    onPressed: () => voiceTextController.text = "Order my diabetes medicine",
+                  ),
+                  ActionChip(
+                    label: const Text("Order BP medicine"),
+                    onPressed: () => voiceTextController.text = "Order my BP medicine",
+                  ),
+                  ActionChip(
+                    label: const Text("Check allergies"),
+                    onPressed: () => voiceTextController.text = "What allergies are recorded in my profile?",
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(modalContext),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text("Cancel"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final spokenText = voiceTextController.text.trim();
+                        Navigator.pop(modalContext);
+                        if (spokenText.isNotEmpty) {
+                          _addUserMessage(spokenText);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: const Text("Send Query", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
           ),
         );
       },
@@ -346,10 +394,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 ),
           ),
           const SizedBox(height: 10),
-          Text(
+          const Text(
             "I can search medicines, translate prescriptions, set refill schedules or add items directly to your cart.",
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.textColorSecondary,
               fontSize: 13.5,
               height: 1.45,
@@ -489,6 +537,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
               ),
             ],
           ),
+          if (!msg.isUser && msg.orderDraft != null) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 36.0, top: 10.0),
+              child: _buildOrderDraftCard(msg.orderDraft!),
+            ),
+          ],
           if (!msg.isUser && msg.suggestedMedicine != null) ...[
             Padding(
               padding: const EdgeInsets.only(left: 36.0, top: 10.0),
@@ -497,6 +551,181 @@ class _AIChatScreenState extends State<AIChatScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildOrderDraftCard(Map<String, dynamic> draft) {
+    final draftId = draft['draft_id']?.toString() ?? '';
+    final medName = draft['medicine_name']?.toString() ?? 'Medicine';
+    final strength = draft['strength']?.toString() ?? '';
+    final form = draft['dosage_form']?.toString() ?? 'Tablet';
+    final qty = draft['quantity'] ?? 1;
+    final total = (draft['total_price'] ?? 0.0).toString();
+    final pharmacy = draft['pharmacy_name']?.toString() ?? 'MediLoop Partner Pharmacy';
+    final rxStatus = draft['prescription_status']?.toString() ?? 'Prescription Checked';
+    bool isConfirmed = draft['is_confirmed'] == true;
+
+    return StatefulBuilder(
+      builder: (context, setCardState) {
+        return Container(
+          width: 290,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: Border.all(
+              color: isConfirmed ? Colors.green : AppTheme.primaryColor.withOpacity(0.2),
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isConfirmed ? Colors.green.shade50 : AppTheme.primaryColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      isConfirmed ? "ORDER CONFIRMED" : "PROPOSED ORDER DRAFT",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: isConfirmed ? Colors.green.shade800 : AppTheme.primaryColor,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    "₹$total",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                medName,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textColorPrimary,
+                ),
+              ),
+              Text(
+                "$strength • $form (Qty: $qty)",
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppTheme.textColorSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Divider(color: Colors.grey.shade200, height: 1),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.storefront_outlined, size: 14, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      pharmacy,
+                      style: const TextStyle(fontSize: 11.5, color: Colors.black87),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    rxStatus.contains("Valid") || rxStatus.contains("Checked") ? Icons.verified_outlined : Icons.info_outline,
+                    size: 14,
+                    color: rxStatus.contains("Valid") || rxStatus.contains("Checked") ? Colors.green : Colors.blue,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    rxStatus,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: rxStatus.contains("Valid") || rxStatus.contains("Checked") ? Colors.green.shade700 : Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (!isConfirmed) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      setCardState(() {
+                        isConfirmed = true;
+                        draft['is_confirmed'] = true;
+                      });
+                      await _confirmOrderDraft(draftId);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    child: const Text("Confirm and Place Order", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () {
+                      _addUserMessage("Cancel draft");
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey.shade700,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                    ),
+                    child: const Text("Cancel Draft", style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                      const SizedBox(width: 6),
+                      Text("Submitted to Pharmacy", style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -804,11 +1033,13 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final Medicine? suggestedMedicine;
+  final Map<String, dynamic>? orderDraft;
 
   _ChatMessage({
     required this.text,
     required this.isUser,
     this.suggestedMedicine,
+    this.orderDraft,
   });
 }
 

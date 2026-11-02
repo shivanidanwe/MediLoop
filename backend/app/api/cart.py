@@ -4,6 +4,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
+from app.models.prescription import Prescription
 from app.schemas.cart import CartResponse, CartItemResponse, CartItemCreate, CartItemUpdate
 from app.services import cart_service
 
@@ -19,7 +20,29 @@ def get_cart(
     Retrieve the current customer's active cart.
     Allows passing pharmacy_id to associate or switch pharmacies.
     """
-    return cart_service.get_or_create_active_cart(db, current_user.id, pharmacy_id)
+    cart = cart_service.get_or_create_active_cart(db, current_user.id, pharmacy_id)
+
+    unavailable_msgs = []
+    rx_text = None
+    latest_rx = db.query(Prescription).filter(
+        Prescription.customer_id == current_user.id
+    ).order_by(Prescription.id.desc()).first()
+
+    if latest_rx:
+        rx_text = latest_rx.extracted_text
+        if latest_rx.pharmacist_comments and "[Stock Notice]" in latest_rx.pharmacist_comments:
+            for line in latest_rx.pharmacist_comments.split("\n"):
+                if "[Stock Notice]" in line:
+                    notice_body = line.replace("[Stock Notice]", "").strip()
+                    for sub in notice_body.split(" | "):
+                        s = sub.strip()
+                        if s and s not in unavailable_msgs:
+                            unavailable_msgs.append(s)
+
+    response = CartResponse.model_validate(cart)
+    response.unavailable_medicines = unavailable_msgs
+    response.prescription_text = rx_text
+    return response
 
 @router.post("/items", response_model=CartItemResponse, status_code=status.HTTP_201_CREATED)
 def add_cart_item(

@@ -12,6 +12,7 @@ import '../../widgets/refill_reminder_card.dart';
 import '../../widgets/custom_bottom_navigation.dart';
 import '../../widgets/category_card.dart';
 import '../../widgets/offer_card.dart';
+import '../../widgets/liquid_glass_card.dart';
 import '../profile/profile_screen.dart';
 import '../cart/cart_screen.dart';
 import '../notifications/notifications_screen.dart';
@@ -27,7 +28,11 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
   late UserModel _user;
-  final RefillModel _refill = RefillModel.mock;
+  RefillModel _refill = RefillModel(
+    medicineName: "Prescribed Medicine",
+    daysRemaining: 4,
+    percentageRemaining: 0.65,
+  );
   List<Category> _categories = [];
   List<Offer> _offers = [];
   bool _isLoadingCategories = true;
@@ -62,10 +67,19 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final categoriesList = await MedicineService.fetchCategories();
       final offersList = await MedicineService.fetchOffers();
+      final recentOrders = await MedicineService.fetchRecentOrders();
+
       if (mounted) {
         setState(() {
           _categories = categoriesList;
           _offers = offersList;
+          if (recentOrders.isNotEmpty) {
+            _refill = RefillModel(
+              medicineName: recentOrders.first.medicineName,
+              daysRemaining: 4,
+              percentageRemaining: 0.60,
+            );
+          }
           _isLoadingCategories = false;
           _isLoadingOffers = false;
         });
@@ -96,21 +110,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: _selectedIndex == 0
-            ? Column(
-                children: [
-                  CustomHomeAppBar(user: _user),
-                  Expanded(child: _buildHomeBody()),
-                ],
-              )
-            : _buildOtherTabBody(_selectedIndex),
-      ),
-      bottomNavigationBar: CustomBottomNavigation(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
+    return PopScope(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectedIndex != 0) {
+          setState(() {
+            _selectedIndex = 0;
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.cloudWhite,
+        body: SafeArea(
+          child: _selectedIndex == 0
+              ? Column(
+                  children: [
+                    CustomHomeAppBar(user: _user),
+                    Expanded(child: _buildHomeBody()),
+                  ],
+                )
+              : _buildOtherTabBody(_selectedIndex),
+        ),
+        bottomNavigationBar: CustomBottomNavigation(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+        ),
       ),
     );
   }
@@ -118,53 +142,244 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHomeBody() {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Search Medicines Input (Tapping navigates to Search screen)
+          // 1. Sleek Liquid Glass Search Input
           FadeSlideTransition(
             delay: const Duration(milliseconds: 50),
             child: GestureDetector(
               onTap: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  color: AppTheme.cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: const Color(0xFFE5E7EB).withOpacity(0.5),
-                    width: 1,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
+              child: LiquidGlassCard(
+                borderRadius: 20,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 child: Row(
                   children: [
                     const Icon(
                       Icons.search_rounded,
-                      color: AppTheme.primaryColor,
+                      color: AppTheme.royalBlue,
                       size: 22,
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      "Search medicines, dosage, brands...",
-                      style: TextStyle(
-                        color: AppTheme.textColorSecondary.withOpacity(0.8),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Text(
+                        "Search medicines, dosages, generics...",
+                        style: TextStyle(
+                          color: AppTheme.textColorSecondary.withOpacity(0.8),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Spacer(),
-                    Icon(
-                      Icons.mic_none_rounded,
-                      color: AppTheme.textColorSecondary.withOpacity(0.6),
-                      size: 20,
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.royalBlue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.mic_none_rounded,
+                        color: AppTheme.royalBlue,
+                        size: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // 2. Large Colorful Hero Card ("Your Health. Our Priority.")
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 90),
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    AppTheme.midnightNavy,
+                    AppTheme.deepBlue,
+                    AppTheme.royalBlue,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.25),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.royalBlue.withOpacity(0.28),
+                    blurRadius: 28,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: Stack(
+                  children: [
+                    // Decorative ambient light
+                    Positioned(
+                      right: -30,
+                      top: -30,
+                      child: Container(
+                        width: 160,
+                        height: 160,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              AppTheme.electricCyan.withOpacity(0.4),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: -20,
+                      bottom: -20,
+                      child: Container(
+                        width: 140,
+                        height: 140,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              AppTheme.violet.withOpacity(0.3),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.white.withOpacity(0.3)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.shield_outlined, color: AppTheme.mint, size: 14),
+                                    SizedBox(width: 5),
+                                    Text(
+                                      "SMART HEALTHCARE",
+                                      style: TextStyle(
+                                        color: AppTheme.mint,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Spacer(),
+                              const Icon(Icons.all_inclusive_rounded, color: AppTheme.electricCyan, size: 28),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            "Your Health.\nOur Priority.",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              height: 1.15,
+                              letterSpacing: -0.6,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Autonomous prescription verification, verified genuine medicines, and rapid doorstep delivery.",
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              GestureDetector(
+                                onTap: () => Navigator.pushNamed(context, AppRoutes.uploadPrescription),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [AppTheme.electricCyan, AppTheme.aqua],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.electricCyan.withOpacity(0.35),
+                                        blurRadius: 14,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.cloud_upload_outlined, color: AppTheme.midnightNavy, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        "Upload Rx",
+                                        style: TextStyle(
+                                          color: AppTheme.midnightNavy,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: Colors.white.withOpacity(0.25)),
+                                  ),
+                                  child: const Text(
+                                    "Browse Catalog",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -173,9 +388,58 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Medicine Categories Section
+          // 3. Quick Action Grid (Upload Rx, Buy Medicines, Track Order, AI Assistant)
           FadeSlideTransition(
-            delay: const Duration(milliseconds: 120),
+            delay: const Duration(milliseconds: 130),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Quick Care Actions",
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.midnightNavy,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildQuickActionItem(
+                      icon: Icons.receipt_long_rounded,
+                      label: "Upload Rx",
+                      gradient: const LinearGradient(colors: [AppTheme.royalBlue, AppTheme.electricCyan]),
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.uploadPrescription),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.medication_liquid_rounded,
+                      label: "Buy Meds",
+                      gradient: const LinearGradient(colors: [AppTheme.violet, AppTheme.lavender]),
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.local_shipping_rounded,
+                      label: "Track Order",
+                      gradient: const LinearGradient(colors: [AppTheme.electricCyan, AppTheme.aqua]),
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.orderTracking),
+                    ),
+                    _buildQuickActionItem(
+                      icon: Icons.auto_awesome_rounded,
+                      label: "AI Chat",
+                      gradient: const LinearGradient(colors: [AppTheme.softPink, AppTheme.warmYellow]),
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // 4. Medicine Categories Section
+          FadeSlideTransition(
+            delay: const Duration(milliseconds: 160),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -183,32 +447,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      "Categories",
+                      "Healthcare Categories",
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textColorPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.midnightNavy,
                         letterSpacing: -0.3,
                       ),
                     ),
-                    TextButton(
-                      onPressed: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        foregroundColor: AppTheme.primaryColor,
-                      ),
+                    GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.searchMedicines),
                       child: const Row(
                         children: [
                           Text(
                             "See All",
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.royalBlue,
                             ),
                           ),
-                          Icon(Icons.keyboard_arrow_right_rounded, size: 16),
+                          Icon(Icons.keyboard_arrow_right_rounded, size: 16, color: AppTheme.royalBlue),
                         ],
                       ),
                     ),
@@ -243,68 +502,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Quick Actions Section
+          // 5. Special Promotional Offers
           FadeSlideTransition(
-            delay: const Duration(milliseconds: 140),
+            delay: const Duration(milliseconds: 190),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  "Quick Actions",
+                  "Exclusive Health Deals",
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textColorPrimary,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildQuickActionItem(
-                      icon: Icons.file_upload_outlined,
-                      label: "Upload Rx",
-                      color: AppTheme.primaryColor,
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.uploadPrescription),
-                    ),
-                    _buildQuickActionItem(
-                      icon: Icons.auto_awesome_outlined,
-                      label: "AI Chat",
-                      color: AppTheme.primaryColor,
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
-                    ),
-                    _buildQuickActionItem(
-                      icon: Icons.local_shipping_outlined,
-                      label: "Track Order",
-                      color: AppTheme.primaryColor,
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.orderTracking),
-                    ),
-                    _buildQuickActionItem(
-                      icon: Icons.shopping_bag_outlined,
-                      label: "My Cart",
-                      color: AppTheme.primaryColor,
-                      onTap: () => setState(() => _selectedIndex = 3),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 28),
-
-          // Offers Banner Section
-          FadeSlideTransition(
-            delay: const Duration(milliseconds: 180),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Special Offers",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textColorPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.midnightNavy,
                     letterSpacing: -0.3,
                   ),
                 ),
@@ -312,7 +521,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 _isLoadingOffers
                     ? _buildOffersShimmer()
                     : SizedBox(
-                        height: 136,
+                        height: 140,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           physics: const BouncingScrollPhysics(),
@@ -325,33 +534,34 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
-          // 1. Upload Prescription Card (Staggered Animation 1)
-          FadeSlideTransition(
-            delay: const Duration(milliseconds: 100),
-            child: const PrescriptionUploadCard(),
+          // 6. Upload Prescription Card
+          const FadeSlideTransition(
+            delay: Duration(milliseconds: 220),
+            child: PrescriptionUploadCard(),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          // 2. AI Ordering Assistant (Staggered Animation 2)
-          FadeSlideTransition(
-            delay: const Duration(milliseconds: 250),
-            child: const AIOrderingCard(),
+          // 7. AI Ordering Assistant Card
+          const FadeSlideTransition(
+            delay: Duration(milliseconds: 260),
+            child: AIOrderingCard(),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          // 3. AI Refill Reminder (Staggered Animation 3)
+          // 8. AI Refill Reminder Card
           FadeSlideTransition(
-            delay: const Duration(milliseconds: 400),
+            delay: const Duration(milliseconds: 300),
             child: RefillReminderCard(
               refill: _refill,
               onReorder: () {
-                // Navigate to ordering flow / Chat
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Initiating reorder process for Crocin 650...'),
-                    duration: Duration(seconds: 2),
+                  SnackBar(
+                    content: const Text('Initiating reorder process for medication...'),
+                    backgroundColor: AppTheme.royalBlue,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 );
                 _navigateToChat();
@@ -371,295 +581,16 @@ class _HomeScreenState extends State<HomeScreen> {
       case 3:
         return const CartScreen();
       case 4:
-        return const ProfileScreen();
+        return ProfileScreen(
+          onBackToHome: () {
+            setState(() {
+              _selectedIndex = 0;
+            });
+          },
+        );
       default:
         return const Center(child: Text("Tab not implemented"));
     }
-  }
-
-  // --- Notifications Tab ---
-  Widget _buildNotificationsTab() {
-    final List<Map<String, String>> notifications = [
-      {
-        "title": "Refill Alert: Crocin 650",
-        "body": "Your Crocin 650 stock is low (estimated 3 days remaining). Reorder now with one tap.",
-        "time": "Just Now",
-        "type": "refill"
-      },
-      {
-        "title": "Prescription Approved",
-        "body": "Your uploaded prescription has been verified by the autonomous pharmacy agent.",
-        "time": "2 hours ago",
-        "type": "prescription"
-      },
-      {
-        "title": "Order Delivered",
-        "body": "Order #ML-9281 containing Vitamins B12 has been delivered successfully.",
-        "time": "Yesterday",
-        "type": "delivery"
-      }
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Notifications",
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textColorPrimary,
-                ),
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: ListView.builder(
-              physics: const BouncingScrollPhysics(),
-              itemCount: notifications.length,
-              itemBuilder: (context, index) {
-                final item = notifications[index];
-                IconData icon;
-                Color iconColor;
-                switch (item["type"]) {
-                  case "refill":
-                    icon = Icons.alarm_rounded;
-                    iconColor = Colors.orange.shade800;
-                    break;
-                  case "prescription":
-                    icon = Icons.assignment_turned_in_rounded;
-                    iconColor = AppTheme.primaryColor;
-                    break;
-                  default:
-                    icon = Icons.local_shipping_rounded;
-                    iconColor = Colors.blue.shade800;
-                }
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                    border: Border.all(color: Colors.grey.shade100),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: iconColor.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, color: iconColor, size: 20),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item["title"]!,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: AppTheme.textColorPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item["body"]!,
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 12,
-                                height: 1.3,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              item["time"]!,
-                              style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- Cart Tab ---
-  Widget _buildCartTab() {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "My Cart",
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textColorPrimary,
-                ),
-          ),
-          const SizedBox(height: 20),
-          // Simple item representation
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-              border: Border.all(color: Colors.grey.shade100),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.medication_rounded,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Crocin 650",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: AppTheme.textColorPrimary,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        "Tablet • 15 Units",
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Text(
-                  "₹35.0",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Spacer(),
-          // Order Details Summary
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppTheme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                _buildSummaryRow("Item Subtotal", "₹35.0"),
-                const SizedBox(height: 8),
-                _buildSummaryRow("Delivery Charges", "₹0.0 (Free)"),
-                const Divider(height: 24),
-                _buildSummaryRow("Total Amount", "₹35.0", isTotal: true),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Processing checkout... Autopilot pharmacy agent engaged.'),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text(
-                "Proceed to Checkout",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryRow(String label, String value, {bool isTotal = false}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-            fontSize: isTotal ? 16 : 14,
-            color: isTotal ? AppTheme.textColorPrimary : Colors.grey.shade600,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
-            fontSize: isTotal ? 18 : 14,
-            color: isTotal ? AppTheme.primaryColor : AppTheme.textColorPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- Profile Tab ---
-  Widget _buildProfileTab() {
-    return const ProfileScreen();
   }
 
   Widget _buildCategoriesShimmer() {
@@ -671,22 +602,22 @@ class _HomeScreenState extends State<HomeScreen> {
         itemCount: 5,
         itemBuilder: (context, index) {
           return Container(
-            width: 84,
+            width: 82,
             margin: const EdgeInsets.only(right: 12),
             child: Column(
               children: [
                 Container(
-                  height: 64,
-                  width: 64,
+                  height: 60,
+                  width: 60,
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  height: 12,
-                  width: 45,
+                  height: 10,
+                  width: 44,
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(4),
@@ -702,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildOffersShimmer() {
     return SizedBox(
-      height: 136,
+      height: 140,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
@@ -724,7 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQuickActionItem({
     required IconData icon,
     required String label,
-    required Color color,
+    required Gradient gradient,
     required VoidCallback onTap,
   }) {
     return Expanded(
@@ -732,19 +663,19 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: onTap,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
           decoration: BoxDecoration(
-            color: AppTheme.cardColor,
-            borderRadius: BorderRadius.circular(20),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: const Color(0xFFE5E7EB).withOpacity(0.5),
-              width: 1,
+              color: Colors.grey.shade200,
+              width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.015),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: AppTheme.midnightNavy.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -752,15 +683,21 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
-                  color: AppTheme.secondaryColor.withOpacity(0.4),
-                  shape: BoxShape.circle,
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.royalBlue.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-                child: Icon(
-                  icon,
-                  color: AppTheme.primaryColor,
-                  size: 22,
+                child: Center(
+                  child: Icon(icon, color: Colors.white, size: 20),
                 ),
               ),
               const SizedBox(height: 8),
@@ -769,8 +706,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textColorPrimary,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.midnightNavy,
                   letterSpacing: -0.1,
                 ),
                 maxLines: 1,

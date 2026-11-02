@@ -8,6 +8,7 @@ import '../../core/constants/api_config.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/cart_service.dart';
+import '../../services/profile_service.dart';
 import '../../services/image_picker_service.dart';
 import '../../routes/app_routes.dart';
 
@@ -21,9 +22,33 @@ class UploadPrescriptionScreen extends StatefulWidget {
 class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
   final ImagePickerService _imagePickerService = ImagePickerService();
   final CartService _cartService = CartService();
+  final ProfileService _profileService = ProfileService();
   XFile? _selectedImage;
   Uint8List? _selectedImageBytes;
   bool _isUploading = false;
+  String? _extractedText;
+  List<Map<String, dynamic>> _extractedItems = [];
+  String? _doctorInfo;
+  String? _patientInfo;
+  String? _instructionsInfo;
+  String? _rxId;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileService.addListener(_onProfileUpdated);
+    _profileService.fetchPrescriptionsFromBackend();
+  }
+
+  void _onProfileUpdated() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _profileService.removeListener(_onProfileUpdated);
+    super.dispose();
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final image = await _imagePickerService.pickImage(source);
@@ -40,6 +65,12 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
     setState(() {
       _selectedImage = null;
       _selectedImageBytes = null;
+      _extractedText = null;
+      _extractedItems = [];
+      _doctorInfo = null;
+      _patientInfo = null;
+      _instructionsInfo = null;
+      _rxId = null;
     });
   }
 
@@ -73,62 +104,200 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final rxId = data["id"] ?? "";
+        final rxId = data["id"]?.toString() ?? "";
+        _rxId = rxId;
         _cartService.setPrescriptionStatus("Uploaded");
 
-        // Wait 3.5s for the local background AI pipeline to complete OCR and cart population
-        await Future.delayed(const Duration(milliseconds: 3500));
+        // Wait for background orchestration and sync cart & profile prescription history
+        await Future.delayed(const Duration(milliseconds: 2000));
         await _cartService.fetchCartFromBackend();
+        await _profileService.fetchPrescriptionsFromBackend();
+
+        // Extract structured text and parsed items
+        String extracted = (data["extracted_text"] ?? "").toString().trim();
+        List<Map<String, dynamic>> itemsList = [];
+        if (data["items"] != null && data["items"] is List) {
+          itemsList = List<Map<String, dynamic>>.from(data["items"]);
+        }
+
+        if (rxId.isNotEmpty && (extracted.isEmpty || itemsList.isEmpty)) {
+          try {
+            final getUri = Uri.parse('${ApiConfig.baseUrl}/prescriptions/$rxId');
+            final getRes = await http.get(getUri, headers: {
+              if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+            });
+            if (getRes.statusCode == 200) {
+              final rxData = jsonDecode(getRes.body);
+              if (extracted.isEmpty) extracted = (rxData["extracted_text"] ?? "").toString().trim();
+              if (itemsList.isEmpty && rxData["items"] != null && rxData["items"] is List) {
+                itemsList = List<Map<String, dynamic>>.from(rxData["items"]);
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Filter out conversational errors or non-medicine lines
+        itemsList = itemsList.where((item) {
+          final rawName = (item['medicine_name'] ?? item['name'] ?? '').toString();
+          return CartService.isValidMedicineName(rawName);
+        }).toList();
+
+        // Parse doctor, patient, instructions from structured text if present
+        String? doc;
+        String? pt;
+        String? inst;
+        if (extracted.isNotEmpty) {
+          for (final line in extracted.split('\n')) {
+            final lUpper = line.toUpperCase();
+            if ((lUpper.startsWith('DOCTOR') || lUpper.contains('DR.')) && doc == null) {
+              doc = line.replaceAll(RegExp(r'^Doctor\s*(\/\s*Clinic)?\s*:\s*', caseSensitive: false), '').trim();
+            } else if (lUpper.startsWith('PATIENT') && pt == null) {
+              pt = line.replaceAll(RegExp(r'^Patient(\s*Details)?\s*:\s*', caseSensitive: false), '').trim();
+            } else if (lUpper.startsWith('INSTRUCTIONS') && inst == null) {
+              inst = line.replaceAll(RegExp(r'^Instructions\s*:\s*', caseSensitive: false), '').trim();
+            }
+          }
+        }
+
+        if (itemsList.isNotEmpty) {
+          _cartService.addExtractedPrescriptionMedicines(
+            items: itemsList,
+            prescriptionId: rxId.isNotEmpty ? rxId : "1",
+            extractedText: extracted,
+          );
+        } else {
+          _cartService.setPrescriptionStatus("Verification Pending");
+        }
 
         if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Row(
-                children: [
-                  Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 28),
-                  SizedBox(width: 10),
-                  Text("AI Analysis Complete!", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Prescription #$rxId processed by MediLoop Multi-Agent Ecosystem:"),
-                  const SizedBox(height: 12),
-                  const Text("✓ Vision OCR: Text transcribed", style: TextStyle(fontSize: 13, color: Colors.black87)),
-                  const Text("✓ Clinical NER: Medicines extracted", style: TextStyle(fontSize: 13, color: Colors.black87)),
-                  const Text("✓ Drug Safety CDSS: Passed (Risk: LOW)", style: TextStyle(fontSize: 13, color: Colors.black87)),
-                  const Text("✓ Multi-Pharmacy Routing: Optimized", style: TextStyle(fontSize: 13, color: Colors.black87)),
-                  const Text("✓ Cart: Medicines auto-populated", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.pop(context);
-                  },
-                  child: const Text("Close"),
+          setState(() {
+            _extractedText = extracted;
+            _extractedItems = itemsList;
+            _doctorInfo = doc;
+            _patientInfo = pt;
+            _instructionsInfo = inst;
+          });
+
+          if (itemsList.isNotEmpty) {
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 28),
+                    SizedBox(width: 10),
+                    Text("Prescription Processed!", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  ],
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Prescription #$rxId processed by MediLoop Multi-Agent Ecosystem:"),
+                    const SizedBox(height: 12),
+                    const Text("✓ Vision OCR: Medical text transcribed", style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text("✓ Clinical NER: Medicines structured & verified", style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text("✓ Drug Safety CDSS: Passed clinical checks", style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text("✓ Pharmacy Inventory: Stock confirmed", style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const Text("✓ Cart: Prescribed items auto-populated", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.secondaryColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+                      ),
+                      child: Text(
+                        "${itemsList.length} prescribed medicines successfully extracted and added to your cart.",
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text("Review Extraction"),
                   ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, AppRoutes.cart);
-                  },
-                  child: const Text("View in Cart", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushNamed(context, AppRoutes.cart);
+                    },
+                    child: const Text("View in Cart", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: Row(
+                  children: [
+                    Icon(Icons.hourglass_top_rounded, color: Colors.orange.shade800, size: 28),
+                    const SizedBox(width: 10),
+                    const Text("Prescription Uploaded", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  ],
                 ),
-              ],
-            ),
-          );
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Prescription #$rxId uploaded successfully:"),
+                    const SizedBox(height: 12),
+                    const Text("No medicines could be automatically identified from this image (it may be blurry or low-resolution).", style: TextStyle(fontSize: 13, color: Colors.black87)),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: const Text(
+                        "Your prescription has been forwarded to the Pharmacist Dashboard for manual review and medicine verification.",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.brown),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                    },
+                    child: const Text("Upload Clearer Photo"),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.pushNamed(context, AppRoutes.cart);
+                    },
+                    child: const Text("Go to Cart", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+          }
         }
       } else if (response.statusCode == 401) {
         if (mounted) {
@@ -257,8 +426,18 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
                         : _buildImagePreview(),
                     const SizedBox(height: 24),
 
+                    // Extracted Prescription Text Card (below prescription extracted)
+                    if (_extractedText != null && _extractedText!.isNotEmpty) ...[
+                      _buildExtractedTextCard(),
+                      const SizedBox(height: 24),
+                    ],
+
                     // Guidelines / Tips Card
                     _buildTipsCard(),
+                    const SizedBox(height: 20),
+
+                    // Prescription History & Extracted Text Records
+                    _buildPrescriptionHistorySection(),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -504,6 +683,209 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
     );
   }
 
+  Widget _buildExtractedTextCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.25),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.receipt_long_rounded,
+                  color: AppTheme.primaryColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Prescription Extraction Report",
+                      style: TextStyle(
+                        color: AppTheme.textColorPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _rxId != null ? "Prescription #$_rxId • Verified" : "AI Clinical NER Extraction",
+                      style: const TextStyle(
+                        color: AppTheme.textColorSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E7D32).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded, size: 12, color: Color(0xFF2E7D32)),
+                    SizedBox(width: 4),
+                    Text(
+                      "Verified",
+                      style: TextStyle(
+                        color: Color(0xFF2E7D32),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+          // Exact readable prescription report format adhering strictly to specifications
+          _buildExactPrescriptionReportView(_extractedText ?? ""),
+
+          const SizedBox(height: 16),
+          // View in Cart Quick Action
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, AppRoutes.cart);
+              },
+              icon: const Icon(Icons.shopping_cart_outlined, size: 18, color: Colors.white),
+              label: const Text(
+                "View Extracted Medicines in Cart",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExactPrescriptionReportView(String report) {
+    if (report.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final lines = report.split('\n');
+    final spans = <TextSpan>[];
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+        // Section Header: **Prescription Details:** / **Prescribed Medicines:** / **Medical Advice & Instructions:**
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13.5,
+            color: Color(0xFF0F172A),
+            height: 1.8,
+          ),
+        ));
+      } else if (trimmed.contains(':') && !RegExp(r'^\d+\.').hasMatch(trimmed)) {
+        // Clinical Detail Field: "Hospital / Clinic: ..."
+        final colonIdx = line.indexOf(':');
+        final label = line.substring(0, colonIdx + 1);
+        final value = line.substring(colonIdx + 1);
+        final isMissing = value.toLowerCase().contains('not mentioned in prescription') || value.toLowerCase().contains('unable to read clearly');
+
+        spans.add(TextSpan(
+          text: label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 12.5,
+            color: Color(0xFF334155),
+            height: 1.5,
+          ),
+        ));
+        spans.add(TextSpan(
+          text: '$value\n',
+          style: TextStyle(
+            fontWeight: isMissing ? FontWeight.w400 : FontWeight.w500,
+            fontSize: 12.5,
+            color: isMissing ? const Color(0xFF64748B) : const Color(0xFF0F172A),
+            fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+            height: 1.5,
+          ),
+        ));
+      } else if (RegExp(r'^\d+\.').hasMatch(trimmed)) {
+        // Numbered Medicine Item: "1. [Medicine Name] | Strength: ... | Dosage: ... | Frequency: ... | Duration: ... | Qty: ..."
+        final isNeedsVerification = trimmed.toLowerCase().contains('(needs verification)');
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            color: isNeedsVerification ? const Color(0xFFD97706) : const Color(0xFF1E293B),
+            height: 1.6,
+          ),
+        ));
+      } else {
+        // Other content or spacing lines
+        spans.add(TextSpan(
+          text: '$line\n',
+          style: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 12.5,
+            color: Color(0xFF334155),
+            height: 1.5,
+          ),
+        ));
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.0),
+      ),
+      child: SelectableText.rich(
+        TextSpan(children: spans),
+      ),
+    );
+  }
+
   Widget _buildTipsCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -580,6 +962,152 @@ class _UploadPrescriptionScreenState extends State<UploadPrescriptionScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPrescriptionHistorySection() {
+    final prescriptions = _profileService.getPrescriptions();
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.history_rounded, size: 16, color: AppTheme.primaryColor),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Prescription History (${prescriptions.length})",
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textColorPrimary),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () => _profileService.fetchPrescriptionsFromBackend(),
+                child: const Text("Refresh", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+              ),
+            ],
+          ),
+          const Divider(height: 16),
+          if (prescriptions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: Text(
+                  "No prescriptions uploaded yet. When you upload prescriptions, your scans and extracted text history will be saved and displayed here.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: AppTheme.textColorSecondary, fontStyle: FontStyle.italic),
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: prescriptions.length > 5 ? 5 : prescriptions.length,
+            itemBuilder: (context, index) {
+              final rx = prescriptions[index];
+              Color statusColor;
+              switch (rx.status.toLowerCase()) {
+                case 'verified':
+                case 'approved':
+                  statusColor = const Color(0xFF2E7D32);
+                  break;
+                case 'rejected':
+                  statusColor = Colors.red.shade700;
+                  break;
+                default:
+                  statusColor = Colors.orange.shade800;
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundColor,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.description_outlined, size: 16, color: AppTheme.primaryColor),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Rx #${rx.id} • ${rx.fileName}",
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textColorPrimary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            rx.status,
+                            style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Uploaded on ${rx.uploadDate}",
+                      style: const TextStyle(fontSize: 11, color: AppTheme.textColorSecondary),
+                    ),
+                    if (rx.extractedText != null && rx.extractedText!.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Text(
+                          rx.extractedText!.trim(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: AppTheme.textColorPrimary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 

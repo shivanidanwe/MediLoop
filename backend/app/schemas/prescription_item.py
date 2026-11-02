@@ -9,6 +9,11 @@ class PrescriptionItemBase(BaseModel):
     duration_days: Optional[int] = None
     calculated_quantity: Optional[int] = None
     confidence_score: Optional[float] = None
+    form: Optional[str] = None
+    dosage_instructions: Optional[str] = None
+    raw_evidence_text: Optional[str] = None
+    is_ambiguous: Optional[bool] = False
+    requires_review: Optional[bool] = False
 
 class PrescriptionItemCreate(PrescriptionItemBase):
     pass

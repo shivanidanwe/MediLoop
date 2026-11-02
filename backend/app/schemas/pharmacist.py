@@ -28,6 +28,7 @@ class Pharmacist(PharmacistBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    pharmacy_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

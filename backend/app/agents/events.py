@@ -21,3 +21,6 @@ class AgentEvent(str, Enum):
     REFILL_REMINDER = "refill_reminder"
     AI_QUERY = "ai_query"
     AI_CHAT_REQUEST = "ai_chat_request"
+    PRESCRIPTION_VERIFIED = "prescription_verified"
+    LOW_STOCK_DETECTED = "low_stock_detected"
+    PROCUREMENT_INVOICE_GENERATED = "procurement_invoice_generated"

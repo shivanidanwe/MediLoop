@@ -75,8 +75,8 @@ class OllamaClient:
             "options": {
                 "temperature": 0.1,  # Strictly deterministic
                 "top_p": 0.9,
-                "repeat_penalty": 1.15,
-                "num_predict": 400,
+                "repeat_penalty": 1.25,
+                "num_predict": 350,
             }
         }
 

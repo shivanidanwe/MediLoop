@@ -40,166 +40,178 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen> with SingleTick
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Spacer(),
 
-              // Premium Success Illustration
-              ScaleTransition(
-                scale: _scaleAnimation,
-                child: Center(
-                  child: SizedBox(
-                    width: 170,
-                    height: 170,
-                    child: CustomPaint(
-                      painter: OrderSuccessIllustrationPainter(
-                        primaryColor: AppTheme.primaryColor,
-                        secondaryColor: AppTheme.secondaryColor,
-                        accentColor: AppTheme.accentColor,
-                      ),
+                        // Premium Success Illustration
+                        ScaleTransition(
+                          scale: _scaleAnimation,
+                          child: Center(
+                            child: SizedBox(
+                              width: 170,
+                              height: 170,
+                              child: CustomPaint(
+                                painter: OrderSuccessIllustrationPainter(
+                                  primaryColor: AppTheme.primaryColor,
+                                  secondaryColor: AppTheme.secondaryColor,
+                                  accentColor: AppTheme.accentColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 36),
+
+                        // Title
+                        const Text(
+                          "Order Confirmed",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                            color: AppTheme.textColorPrimary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Description
+                        Text(
+                          "Your order has been received and registered with our pharmacy systems. The pharmacist is preparing your medicines.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppTheme.textColorSecondary.withOpacity(0.9),
+                            fontSize: 14,
+                            height: 1.45,
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Order ID Card
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                          decoration: BoxDecoration(
+                            color: AppTheme.cardColor,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.015),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Order ID",
+                                style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                              Text(
+                                orderId,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15.5,
+                                  color: AppTheme.primaryColor,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        Text(
+                          "You will receive a confirmation notification shortly.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppTheme.textColorSecondary.withOpacity(0.8),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+
+                        const Spacer(),
+
+                        // Primary Action
+                        AnimatedButtonWrapper(
+                          onPressed: () {
+                            Navigator.pushReplacementNamed(
+                              context,
+                              AppRoutes.orderTracking,
+                              arguments: orderId,
+                            );
+                          },
+                          child: Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.primaryColor.withOpacity(0.22),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              "Track Order",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Secondary Action
+                        AnimatedButtonWrapper(
+                          onPressed: () {
+                            Navigator.pushNamedAndRemoveUntil(
+                              context,
+                              AppRoutes.home,
+                              (route) => false,
+                            );
+                          },
+                          child: Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppTheme.primaryColor, width: 2),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              "Back to Home",
+                              style: TextStyle(
+                                color: AppTheme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 36),
-
-              // Title
-              const Text(
-                "Order Confirmed",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24,
-                  color: AppTheme.textColorPrimary,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Description
-              Text(
-                "Your order has been received and registered with our pharmacy systems. The pharmacist is preparing your medicines.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppTheme.textColorSecondary.withOpacity(0.9),
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Order ID Card
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: AppTheme.cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.015),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "Order ID",
-                      style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold, fontSize: 13.5),
-                    ),
-                    Text(
-                      orderId,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15.5,
-                        color: AppTheme.primaryColor,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              Text(
-                "You will receive a confirmation notification shortly.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppTheme.textColorSecondary.withOpacity(0.8),
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-
-              const Spacer(),
-
-              // Primary Action
-              AnimatedButtonWrapper(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(
-                    context,
-                    AppRoutes.orderTracking,
-                    arguments: orderId,
-                  );
-                },
-                child: Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryColor.withOpacity(0.22),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    "Track Order",
-                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Secondary Action
-              AnimatedButtonWrapper(
-                onPressed: () {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    AppRoutes.home,
-                    (route) => false,
-                  );
-                },
-                child: Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppTheme.primaryColor, width: 2),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    "Back to Home",
-                    style: TextStyle(
-                      color: AppTheme.primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

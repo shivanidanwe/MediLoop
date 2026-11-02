@@ -10,5 +10,26 @@ from app.models.prescription import Prescription, PrescriptionItem, Verification
 from app.models.medicine import Medicine
 from app.models.pharmacy_inventory import PharmacyInventory
 from app.models.cart import Cart, CartItem, CartStatus, CartItemSource
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, OrderAuditEvent, OrderDraft
 from app.models.notification import Notification
+from app.models.purchase_order import SupplierPurchaseOrder
+from app.models.inventory_movement import InventoryMovement
+from app.models.order_status_history import OrderStatusHistory
+from app.models.notification_preference import NotificationPreference
+from app.models.catalogue_import import CatalogueImport, CatalogueImportError
+from app.models.orchestration import (
+    WorkflowStatus,
+    ExecutionStatus,
+    AgentRegistryModel,
+    AgentWorkflowModel,
+    AgentExecutionModel,
+    AgentExecutionEventModel,
+    PrescriptionOCRResultModel,
+    PrescriptionExtractionModel,
+    DrugSafetyAssessmentModel,
+    SafetyFindingModel,
+    RefillPredictionModel,
+    RefillReminderHistoryModel,
+    ProcurementRecommendationModel,
+    ProcurementOrderItemModel
+)

@@ -114,8 +114,9 @@ def update_order_status(db: Session, order_id: int, new_status: OrderStatus) -> 
     if not order:
         return None
         
-    # If transitioning to CANCELLED, release reserved stock back to pharmacy
-    if new_status == OrderStatus.CANCELLED and order.order_status != OrderStatus.CANCELLED:
+    # If transitioning to CANCELLED or REJECTED, release reserved stock back to pharmacy
+    status_str = new_status.value if hasattr(new_status, "value") else str(new_status)
+    if status_str in ["CANCELLED", "REJECTED"] and str(order.order_status) not in ["CANCELLED", "REJECTED"]:
         for item in order.items:
             inventory_service.release_reserved_stock(
                 db, 
@@ -125,11 +126,11 @@ def update_order_status(db: Session, order_id: int, new_status: OrderStatus) -> 
                 commit=False
             )
             
-    order.order_status = new_status
+    order.order_status = status_str
     db.commit()
     db.refresh(order)
 
-    if new_status == OrderStatus.DELIVERED:
+    if status_str == "DELIVERED":
         _trigger_order_completed_workflow(order.id, order.customer_id)
 
     return order

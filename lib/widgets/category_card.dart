@@ -17,35 +17,51 @@ class CategoryCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 84,
+        width: 82,
         margin: const EdgeInsets.only(right: 12),
         child: Column(
           children: [
             Container(
-              height: 64,
-              width: 64,
+              height: 60,
+              width: 60,
               decoration: BoxDecoration(
-                color: AppTheme.secondaryColor.withOpacity(0.4), // Soft Mint circle
-                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.royalBlue.withOpacity(0.1),
+                    AppTheme.electricCyan.withOpacity(0.08),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: AppTheme.primaryColor.withOpacity(0.08),
-                  width: 1,
+                  color: Colors.white,
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.midnightNavy.withOpacity(0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(
+                  _getIconData(category.iconPath),
+                  color: AppTheme.royalBlue,
+                  size: 26,
                 ),
               ),
-              child: Icon(
-                _getIconData(category.iconPath),
-                color: AppTheme.primaryColor,
-                size: 26,
-              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 7),
             Text(
               category.name,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textColorPrimary,
+                color: AppTheme.midnightNavy,
                 letterSpacing: -0.1,
               ),
               maxLines: 1,
@@ -58,16 +74,13 @@ class CategoryCard extends StatelessWidget {
   }
 
   IconData _getIconData(String path) {
-    switch (path) {
-      case 'tablet': return Icons.tablet_rounded;
-      case 'medication': return Icons.medication;
-      case 'medication_liquid': return Icons.medication_liquid;
-      case 'health_and_safety': return Icons.health_and_safety;
-      case 'child_care': return Icons.child_care;
-      case 'face': return Icons.face;
-      case 'medical_information': return Icons.medical_information;
-      case 'bloodtype': return Icons.bloodtype;
-      default: return Icons.category;
-    }
+    if (path.contains('prescription')) return Icons.receipt_long_rounded;
+    if (path.contains('otc')) return Icons.medication_rounded;
+    if (path.contains('wellness')) return Icons.spa_rounded;
+    if (path.contains('personal')) return Icons.clean_hands_rounded;
+    if (path.contains('baby')) return Icons.child_care_rounded;
+    if (path.contains('cardiac')) return Icons.favorite_rounded;
+    if (path.contains('diabetic')) return Icons.bloodtype_rounded;
+    return Icons.medical_services_rounded;
   }
 }

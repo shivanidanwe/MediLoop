@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
 from typing import Optional, List
+import re
 from app.models.cart import Cart, CartItem, CartStatus, CartItemSource
 from app.models.prescription import Prescription
+from app.models.medicine import Medicine
 from app.models.pharmacy_inventory import PharmacyInventory
 from app.services import inventory_service
 import logging
@@ -43,8 +45,8 @@ def recalculate_cart_totals(db: Session, cart: Cart) -> None:
     items = db.query(CartItem).filter(CartItem.cart_id == cart.id).all()
     subtotal = sum(item.total_price for item in items)
     
-    # Simple logic: Flat 50.0 delivery fee, free for orders above 500.0
-    delivery_fee = 50.0 if (subtotal > 0 and subtotal < 500.0) else 0.0
+    # Flat 40.0 delivery fee, free for orders above 500.0 (consistent with mobile app)
+    delivery_fee = 40.0 if (subtotal > 0 and subtotal < 500.0) else 0.0
     
     cart.subtotal = round(subtotal, 2)
     cart.delivery_fee = delivery_fee
@@ -192,47 +194,72 @@ def convert_approved_prescription_to_cart(db: Session, prescription_id: int) -> 
         prescription.pharmacy_id = 1
         db.commit()
 
-    # 1. Create or clear the user's active cart linked to this pharmacy
+    # 1. Create and clear the user's active cart linked to this pharmacy
     cart = get_or_create_active_cart(db, customer_id=prescription.customer_id, pharmacy_id=prescription.pharmacy_id)
-    
+    # Purge any old unrelated items from the active cart to avoid pollution
+    db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
+
+    unavailable_msgs = []
+
     # 2. Convert each prescription item into a cart item if matched to catalog
     for item in prescription.items:
-        if not item.medicine_id:
-            logger.warning(f"Prescription Item '{item.medicine_name}' is not matched to a catalog ID, skipping cart load.")
+        clean_name = (item.medicine_name or "").strip()
+        raw_clean = re.sub(r'^(tab|cap|syp|inj|inhaler)\.?\s+', '', clean_name, flags=re.IGNORECASE).strip()
+        raw_first_word = raw_clean.split()[0] if raw_clean else ""
+
+        med = None
+        if item.medicine_id:
+            candidate = db.query(Medicine).filter(Medicine.id == item.medicine_id).first()
+            if candidate and raw_first_word and (raw_first_word.lower() in candidate.brand_name.lower() or candidate.brand_name.lower().startswith(raw_first_word.lower())):
+                med = candidate
+
+        if not med and raw_first_word:
+            med = db.query(Medicine).filter(
+                (Medicine.brand_name.ilike(raw_clean)) | 
+                (Medicine.brand_name.ilike(f"{raw_first_word}%")) |
+                (Medicine.brand_name.ilike(f"%{raw_first_word}%"))
+            ).first()
+            if med and (raw_first_word.lower() not in med.brand_name.lower() and not med.brand_name.lower().startswith(raw_first_word.lower())):
+                med = None
+
+        if not med:
+            msg = f"Extracted medicine '{clean_name}' is not available in pharmacy inventory to add into cart."
+            unavailable_msgs.append(msg)
+            logger.warning(msg)
             continue
-            
+
+        med_id = med.id
+
         # Get stock price and availability from inventory
         inv_item = db.query(PharmacyInventory).filter(
             PharmacyInventory.pharmacy_id == prescription.pharmacy_id,
-            PharmacyInventory.medicine_id == item.medicine_id
+            PharmacyInventory.medicine_id == med_id
         ).first()
-        
-        if not inv_item:
-            logger.warning(f"Matched medicine ID {item.medicine_id} is not stocked at pharmacy {prescription.pharmacy_id}, skipping.")
+
+        if not inv_item or (inv_item.stock_quantity or 0) <= 0:
+            msg = f"Extracted medicine '{clean_name}' is not available in pharmacy inventory to add into cart."
+            unavailable_msgs.append(msg)
+            logger.warning(msg)
             continue
-            
+
         quantity = item.calculated_quantity or 1
-        
-        # Check if already added to cart
-        cart_item = db.query(CartItem).filter(
-            CartItem.cart_id == cart.id,
-            CartItem.medicine_id == item.medicine_id
-        ).first()
-        
-        if cart_item:
-            # Add together
-            cart_item.quantity += quantity
-            cart_item.total_price = round(cart_item.quantity * cart_item.unit_price, 2)
+
+        cart_item = CartItem(
+            cart_id=cart.id,
+            medicine_id=med_id,
+            quantity=quantity,
+            unit_price=inv_item.selling_price,
+            total_price=round(quantity * inv_item.selling_price, 2),
+            source=CartItemSource.PRESCRIPTION
+        )
+        db.add(cart_item)
+
+    if unavailable_msgs:
+        unavail_str = " | ".join(unavailable_msgs)
+        if prescription.pharmacist_comments:
+            prescription.pharmacist_comments += f"\n[Stock Notice] {unavail_str}"
         else:
-            cart_item = CartItem(
-                cart_id=cart.id,
-                medicine_id=item.medicine_id,
-                quantity=quantity,
-                unit_price=inv_item.selling_price,
-                total_price=round(quantity * inv_item.selling_price, 2),
-                source=CartItemSource.PRESCRIPTION
-            )
-            db.add(cart_item)
+            prescription.pharmacist_comments = f"[Stock Notice] {unavail_str}"
             
     db.flush()
     recalculate_cart_totals(db, cart)

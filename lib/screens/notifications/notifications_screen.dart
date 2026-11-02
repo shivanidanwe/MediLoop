@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import '../../core/constants/api_config.dart';
 import '../../core/theme/app_theme.dart';
+import '../../services/auth_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -11,7 +15,6 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, String>> _notifications = [];
   bool _isLoading = false;
-  bool _hasFetched = false;
 
   @override
   void initState() {
@@ -24,43 +27,54 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      final token = await AuthService().getToken();
+      if (token != null && token.isNotEmpty) {
+        final url = Uri.parse('${ApiConfig.baseUrl}/notifications');
+        final res = await http.get(url, headers: ApiConfig.headers(token));
+        if (res.statusCode == 200) {
+          final List data = jsonDecode(res.body);
+          final List<Map<String, String>> loaded = [];
+          for (final n in data) {
+            final dateStr = n['created_at']?.toString().split('T').first ?? 'Recent';
+            final nType = (n['notification_type'] ?? 'info').toString().toLowerCase();
+            loaded.add({
+              "id": n['id'].toString(),
+              "title": n['title'] ?? 'MediLoop Alert',
+              "body": n['message'] ?? '',
+              "time": dateStr,
+              "type": nType.contains('order') ? 'delivery' : (nType.contains('prescription') ? 'prescription' : 'refill'),
+              "read": (n['is_read'] ?? false).toString(),
+            });
+          }
+          if (mounted) {
+            setState(() {
+              _notifications = loaded;
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+      }
+    } catch (_) {}
 
     if (mounted) {
       setState(() {
-        _notifications = [
-          {
-            "id": "1",
-            "title": "Refill Alert: Crocin 650",
-            "body": "Your Crocin 650 stock is low (estimated 3 days remaining). Reorder now with one tap.",
-            "time": "Just Now",
-            "type": "refill",
-            "read": "false"
-          },
-          {
-            "id": "2",
-            "title": "Prescription Approved 📄",
-            "body": "Your uploaded prescription has been verified by the autonomous pharmacy agent.",
-            "time": "2 hours ago",
-            "type": "prescription",
-            "read": "false"
-          },
-          {
-            "id": "3",
-            "title": "Order Out for Delivery 📦",
-            "body": "Order #ML-9281 containing Vitamins B12 has been prepared and is out for delivery.",
-            "time": "Yesterday",
-            "type": "delivery",
-            "read": "true"
-          }
-        ];
+        _notifications = [];
         _isLoading = false;
-        _hasFetched = true;
       });
     }
   }
 
-  void _clearNotifications() {
+  Future<void> _clearNotifications() async {
+    try {
+      final token = await AuthService().getToken();
+      if (token != null && token.isNotEmpty) {
+        final url = Uri.parse('${ApiConfig.baseUrl}/notifications/mark-all-read');
+        await http.post(url, headers: ApiConfig.headers(token));
+      }
+    } catch (_) {}
+
     setState(() {
       _notifications.clear();
     });

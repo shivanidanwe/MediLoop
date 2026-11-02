@@ -28,9 +28,9 @@ class Settings:
     ALLOWED_MIME_TYPES: set = {"image/jpeg", "image/png", "application/pdf"}
     
     # Rate Limiting Controls
-    RATE_LIMIT_PER_MINUTE_AUTH: int = 15
-    RATE_LIMIT_PER_MINUTE_UPLOAD: int = 20
-    RATE_LIMIT_PER_MINUTE_CHAT: int = 30
-    RATE_LIMIT_PER_MINUTE_GENERAL: int = 120
+    RATE_LIMIT_PER_MINUTE_AUTH: int = int(os.getenv("RATE_LIMIT_PER_MINUTE_AUTH", "60"))
+    RATE_LIMIT_PER_MINUTE_UPLOAD: int = int(os.getenv("RATE_LIMIT_PER_MINUTE_UPLOAD", "60"))
+    RATE_LIMIT_PER_MINUTE_CHAT: int = int(os.getenv("RATE_LIMIT_PER_MINUTE_CHAT", "120"))
+    RATE_LIMIT_PER_MINUTE_GENERAL: int = int(os.getenv("RATE_LIMIT_PER_MINUTE_GENERAL", "300"))
 
 settings = Settings()

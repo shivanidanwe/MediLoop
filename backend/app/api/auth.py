@@ -39,8 +39,8 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Generate JWT token with user.id as subject
-    access_token = create_access_token(subject=str(db_user.id))
+    # Generate JWT token with user.id as subject and role
+    access_token = create_access_token(subject=str(db_user.id), role="patient")
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -111,10 +111,14 @@ def pharmacist_login(login_data: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Generate JWT token with pharmacist.id as subject
-    access_token = create_access_token(subject=str(db_pharmacist.id))
+    # Generate JWT token with pharmacist.id as subject and role
+    access_token = create_access_token(subject=str(db_pharmacist.id), role="pharmacist")
+    pharmacist_resp = PharmacistResponse.model_validate(db_pharmacist)
+    if db_pharmacist.pharmacy:
+        pharmacist_resp.pharmacy_name = db_pharmacist.pharmacy.pharmacy_name
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "pharmacist": db_pharmacist
+        "pharmacist": pharmacist_resp
     }

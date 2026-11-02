@@ -45,115 +45,154 @@ class MedicalVisionOCRProvider(BaseOCRProvider):
     async def process_image(self, image_path: str) -> Dict[str, Any]:
         start_time = time.perf_counter()
 
-        # Reference clinical lines for Dr. Sujit Suresh Durugkar prescription
-        durugkar_lines = [
-            "SHREE VENKATESH CLINIC - DR. SUJIT SURESH DURUGKAR (BAMS, DEMS)",
-            "AKLUJ ROAD, ISBAVI, PANDHARPUR - MOB: 9423065744",
-            "PATIENT: PIYUSH SHINDE, AGE: 20 YR, TEMP: 98.6 F, DATE: 18/03/2026",
-            "1. Tab. Ceftas-O 200 mg - 1 tab 1-0-1 for 5 days after food Qty: 10",
-            "2. Tab. Calpol 500 - 1 tab 1-0-1 for 5 days after food Qty: 10",
-            "3. Tab. Drotin-DS 80mg - 1 tab 1-0-1 for 5 days after food Qty: 10",
-            "4. Cap. Acera-D - 1 cap 1-0-1 for 5 days before food Qty: 10",
-            "5. Liq. Alkarate - 7.5ml 3 times a day with 1 glass water for 5 days Qty: 1",
-            "NEXT VISIT: 21-03-2026",
-            "CHEMIST: KALAWATI MEDICAL & GENERAL STORES, PANDHARPUR"
-        ]
+        # Step 0: Robust Path Resolution
+        target_image_path = image_path
+        if not target_image_path or not os.path.exists(target_image_path):
+            candidates = [
+                image_path,
+                os.path.abspath(image_path or ""),
+                os.path.join(os.getcwd(), (image_path or "").lstrip("/\\")),
+                os.path.join(os.getcwd(), "backend", (image_path or "").lstrip("/\\")),
+                os.path.join(os.getcwd(), "uploads", "prescriptions", os.path.basename(image_path or "")),
+                os.path.join(os.getcwd(), "backend", "uploads", "prescriptions", os.path.basename(image_path or "")),
+            ]
+            for c in candidates:
+                if c and os.path.exists(c) and os.path.isfile(c):
+                    target_image_path = c
+                    break
 
-        # Check if the image matches Dr. Durugkar's prescription
-        if os.path.exists(image_path):
+        if not target_image_path or not os.path.exists(target_image_path):
+            duration = (time.perf_counter() - start_time) * 1000.0
+            return {
+                "raw_text": "Prescription document file not found on server storage.",
+                "lines": [],
+                "language": "en",
+                "confidence": 0.0,
+                "status": "FILE_NOT_FOUND",
+                "engine_used": "MedicalVisionOCRProvider",
+                "duration_ms": round(duration, 2),
+            }
+
+        # Step 1: Text-based files (used in test harnesses)
+        if target_image_path.lower().endswith((".txt", ".log", ".csv")):
             try:
-                import hashlib
-                with open(image_path, "rb") as f:
-                    content_bytes = f.read()
-                file_hash = hashlib.md5(content_bytes).hexdigest()
-                file_size = len(content_bytes)
-                if file_hash == "9a39d8b10419d84dde4ef6d9d8fb2c02" or file_size == 89281 or "8659c244" in image_path:
+                with open(target_image_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read().strip().replace("\x00", "")
+                if content:
+                    lines = [line.strip() for line in content.splitlines() if line.strip()]
                     duration = (time.perf_counter() - start_time) * 1000.0
                     return {
-                        "raw_text": "\n".join(durugkar_lines),
-                        "lines": durugkar_lines,
+                        "raw_text": content,
+                        "lines": lines,
                         "language": "en",
-                        "confidence": 0.96,
-                        "engine_used": "MedicalVisionOCRProvider (Clinical Transcriber)",
+                        "confidence": 0.98,
+                        "engine_used": "TextFileReader",
                         "duration_ms": round(duration, 2),
                     }
             except Exception:
                 pass
 
-        # If a real image exists, call Ollama vision model
-        if os.path.exists(image_path):
-            try:
-                from app.core.ollama_client import ollama_client
-                prompt = (
-                    "You are a medical OCR specialist. Extract all visible text from this prescription image "
-                    "verbatim, line by line. Include doctor notes, medicine names, strengths, dosages, and instructions. "
-                    "Do not add commentary, output only the extracted prescription lines."
-                )
-                ollama_res = await ollama_client.generate_vision(image_path=image_path, prompt=prompt)
-                if ollama_res.get("status") == "SUCCESS" and ollama_res.get("lines"):
-                    raw_lower = (ollama_res.get("raw_text") or "").lower()
-                    if any(k in raw_lower for k in ("ceftas", "durugkar", "pandharpur", "venkatesh", "piyush", "drotin")):
-                        duration = (time.perf_counter() - start_time) * 1000.0
-                        return {
-                            "raw_text": "\n".join(durugkar_lines),
-                            "lines": durugkar_lines,
-                            "language": "en",
-                            "confidence": 0.96,
-                            "engine_used": "Ollama Medical Vision (Transcribed)",
-                            "duration_ms": round(duration, 2),
-                        }
-                    duration = (time.perf_counter() - start_time) * 1000.0
-                    return {
-                        "raw_text": ollama_res["raw_text"],
-                        "lines": ollama_res["lines"],
-                        "language": "en",
-                        "confidence": ollama_res.get("confidence", 0.94),
-                        "engine_used": f"Ollama ({ollama_res.get('model_used')})",
-                        "duration_ms": round(duration, 2),
-                    }
-            except Exception as o_err:
-                pass
+        # Step 2: Image Preprocessing (orientation, contrast, blank detection)
+        preprocessed_path = target_image_path
+        try:
+            from app.services.image_preprocessor import validate_and_preprocess_image
+            prep = validate_and_preprocess_image(target_image_path)
+            if not prep.get("is_valid", True):
+                duration = (time.perf_counter() - start_time) * 1000.0
+                return {
+                    "raw_text": prep.get("error") or "Prescription image is unreadable, blurry, or blank. Please upload a clear photo.",
+                    "lines": [],
+                    "language": "en",
+                    "confidence": 0.0,
+                    "status": "UNREADABLE",
+                    "engine_used": "MedicalVisionOCRProvider (Image Preprocessor)",
+                    "duration_ms": round(duration, 2),
+                    "preprocessing": prep
+                }
+            preprocessed_path = prep.get("preprocessed_path") or target_image_path
+        except Exception:
+            preprocessed_path = target_image_path
 
-            # Secondary fallback: text-based read ONLY for text dummy/test files
-            if image_path.lower().endswith((".txt", ".log", ".csv")):
-                try:
-                    with open(image_path, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read().strip().replace("\x00", "")
-                    if content:
-                        lines = [line.strip() for line in content.splitlines() if line.strip()]
-                        duration = (time.perf_counter() - start_time) * 1000.0
-                        return {
-                            "raw_text": content,
-                            "lines": lines,
-                            "language": "en",
-                            "confidence": 0.92,
-                            "engine_used": "TextFileReader",
-                            "duration_ms": round(duration, 2),
-                        }
-                except Exception:
-                    pass
+        # Step 3: Tier 1 - Fast Native Windows OCR (winocr, 50ms execution)
+        try:
+            import winocr
+            from PIL import Image
+            ocr_img = Image.open(preprocessed_path)
+            res = await winocr.recognize_pil(ocr_img, 'en')
+            raw_extracted = (res.text or "").strip()
+            ocr_lines = [l.text.strip() for l in res.lines if l.text and l.text.strip()]
 
-        # Fallback simulation for dev/test image filenames or mock paths
-        lines = [
-            "DR. A. SHARMA, M.D. (CARDIOLOGY)",
-            "CITY CARE CLINIC - RX PRESCRIPTION",
-            "DATE: 2026-07-20",
-            "1. Paracetamol 500mg - 1 tab 1-0-1 for 5 days",
-            "2. Amoxicillin 250 mg - 1 capsule BID for 7 days",
-            "3. Atorvastatin 10mg - once daily HS for 30 days",
-            "4. Metformin 500mg - twice a day after meals",
-            "5. Vitamin D3 60000iu - once a week"
-        ]
+            if raw_extracted and len(raw_extracted) >= 10:
+                duration = (time.perf_counter() - start_time) * 1000.0
+                return {
+                    "raw_text": raw_extracted,
+                    "lines": ocr_lines if ocr_lines else [raw_extracted],
+                    "language": "en",
+                    "confidence": 0.95,
+                    "engine_used": "NativeWindowsOCR (winocr)",
+                    "duration_ms": round(duration, 2),
+                }
+        except Exception:
+            pass
 
-        raw_text = "\n".join(lines)
+        # Step 4: Tier 2 - Multimodal Ollama Vision (llava:latest)
+        try:
+            from app.core.ollama_client import ollama_client
+            prompt = (
+                "Please read this medical prescription image carefully. "
+                "Transcribe every prescribed medicine, including brand or generic name, "
+                "strength (e.g. 500mg, 10mg, 250mg, 20mg), form (tablet, capsule, syrup), "
+                "dosage, frequency, and duration. "
+                "Also transcribe any doctor name, clinic name, or patient details if visible. "
+                "Transcribe each item on a separate numbered line without conversational preamble."
+            )
+            ollama_res = await ollama_client.generate_vision(image_path=preprocessed_path, prompt=prompt)
+            raw_text_full = (ollama_res.get("raw_text") or "").strip()
+
+            if ollama_res.get("status") == "SUCCESS" and raw_text_full and len(raw_text_full) >= 10:
+                # Clean out conversational disclaimers
+                disclaimer_patterns = [
+                    r"^it is important to note that.*$",
+                    r"^please note that.*$",
+                    r"^sharing personal medical information.*$",
+                    r"^without additional context.*$",
+                    r"^if you have any questions.*$",
+                    r"^i would be happy to assist.*$",
+                    r"^the image appears to be.*$",
+                    r"^here is the transcription.*$",
+                    r"^as an ai language model.*$",
+                ]
+                cleaned_lines = []
+                for line in raw_text_full.splitlines():
+                    trimmed = line.strip()
+                    if not trimmed or trimmed == "```":
+                        continue
+                    if any(re.match(p, trimmed.lower()) for p in disclaimer_patterns):
+                        continue
+                    cleaned_lines.append(trimmed)
+
+                clean_text = "\n".join(cleaned_lines) if cleaned_lines else raw_text_full
+                duration = (time.perf_counter() - start_time) * 1000.0
+                return {
+                    "raw_text": clean_text,
+                    "lines": cleaned_lines if cleaned_lines else [clean_text],
+                    "language": "en",
+                    "confidence": 0.94,
+                    "engine_used": f"Ollama ({ollama_res.get('model_used')})",
+                    "duration_ms": round(duration, 2),
+                }
+        except Exception:
+            pass
+
+        # Step 5: If no text could be extracted, return UNREADABLE (Never invent fake medicines)
         duration = (time.perf_counter() - start_time) * 1000.0
-
         return {
-            "raw_text": raw_text,
-            "lines": lines,
+            "raw_text": "Prescription document is unreadable or contains no identifiable medical text. Please upload a clear, legible photo.",
+            "lines": [],
             "language": "en",
-            "confidence": 0.95,
-            "engine_used": self.engine_name,
+            "confidence": 0.0,
+            "status": "UNREADABLE",
+            "engine_used": "MedicalVisionOCRProvider",
             "duration_ms": round(duration, 2),
         }
 

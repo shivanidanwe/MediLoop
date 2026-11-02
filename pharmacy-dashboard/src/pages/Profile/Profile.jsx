@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import SecurityIcon from '@mui/icons-material/Security';
+import apiClient from '../../api/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import SnackbarNotification from '../../components/common/SnackbarNotification';
 
@@ -30,6 +31,44 @@ const Profile = () => {
   
   // Password dialog
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [savingPwd, setSavingPwd] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+
+  const handleChangePassword = async () => {
+    setPwdError('');
+    if (!currentPwd || !newPwd) {
+      setPwdError('Please enter both current and new passwords.');
+      return;
+    }
+    if (newPwd.length < 6) {
+      setPwdError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError('New password and confirmation do not match.');
+      return;
+    }
+    setSavingPwd(true);
+    try {
+      await apiClient.put('/pharmacists/me/password', {
+        current_password: currentPwd,
+        new_password: newPwd
+      });
+      setPasswordOpen(false);
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      setToastMsg('Security password updated successfully in database.');
+      setToastOpen(true);
+    } catch (err) {
+      setPwdError(err.response?.data?.detail || 'Failed to update password.');
+    } finally {
+      setSavingPwd(false);
+    }
+  };
 
   const {
     control,
@@ -304,25 +343,48 @@ const Profile = () => {
         <DialogTitle sx={{ fontWeight: 600 }}>Change Security Password</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" flexDirection="column" gap={2} sx={{ mt: 1 }}>
-            <TextField label="Current Password" type="password" fullWidth InputProps={{ style: { borderRadius: 12 } }} />
-            <TextField label="New Password" type="password" fullWidth InputProps={{ style: { borderRadius: 12 } }} />
-            <TextField label="Confirm New Password" type="password" fullWidth InputProps={{ style: { borderRadius: 12 } }} />
+            {pwdError && (
+              <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
+                {pwdError}
+              </Typography>
+            )}
+            <TextField 
+              label="Current Password" 
+              type="password" 
+              fullWidth 
+              value={currentPwd}
+              onChange={(e) => setCurrentPwd(e.target.value)}
+              InputProps={{ style: { borderRadius: 12 } }} 
+            />
+            <TextField 
+              label="New Password" 
+              type="password" 
+              fullWidth 
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              InputProps={{ style: { borderRadius: 12 } }} 
+            />
+            <TextField 
+              label="Confirm New Password" 
+              type="password" 
+              fullWidth 
+              value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)}
+              InputProps={{ style: { borderRadius: 12 } }} 
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setPasswordOpen(false)} color="inherit">
+          <Button onClick={() => setPasswordOpen(false)} color="inherit" disabled={savingPwd}>
             Cancel
           </Button>
           <Button
-            onClick={() => {
-              setPasswordOpen(false);
-              setToastMsg('Security password updated successfully.');
-              setToastOpen(true);
-            }}
+            onClick={handleChangePassword}
             variant="contained"
             color="primary"
+            disabled={savingPwd}
           >
-            Update Password
+            {savingPwd ? 'Updating...' : 'Update Password'}
           </Button>
         </DialogActions>
       </Dialog>

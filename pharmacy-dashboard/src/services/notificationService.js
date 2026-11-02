@@ -1,26 +1,26 @@
 import apiClient from '../api/apiClient';
-import { useMockData } from '../context/MockDataContext';
 
 export const useNotificationService = () => {
-  const { getNotifications: getMockNotifications, markNotificationRead: markMockRead } = useMockData();
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (limit = 50, category = null) => {
     try {
-      const response = await apiClient.get('/notifications');
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        return response.data.map((n, idx) => ({
-          id: n.id || idx + 1,
-          title: n.title || 'System Notification',
-          message: n.message || n.content || 'New update available.',
-          timestamp: n.created_at ? new Date(n.created_at).toLocaleTimeString() : 'Just now',
-          read: n.is_read || false,
-          type: n.type || 'info'
-        }));
+      const url = category ? `/notifications?limit=${limit}&category=${category}` : `/notifications?limit=${limit}`;
+      const response = await apiClient.get(url);
+      if (Array.isArray(response.data)) {
+        return response.data.map(formatNotificationFromBackend);
       }
     } catch (err) {
-      console.warn('Backend /notifications endpoint check:', err.message);
+      console.error('Backend /notifications error:', err.message);
     }
-    return getMockNotifications();
+    return [];
+  };
+
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await apiClient.get('/notifications/unread-count');
+      return response.data?.unread_count || 0;
+    } catch (err) {
+      return 0;
+    }
   };
 
   const markAsRead = async (id) => {
@@ -28,13 +28,77 @@ export const useNotificationService = () => {
       await apiClient.put(`/notifications/${id}/read`);
       return { success: true };
     } catch (err) {
-      markMockRead(id);
+      return { success: false, message: err.message };
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await apiClient.post('/notifications/mark-all-read');
       return { success: true };
+    } catch (err) {
+      return { success: false, message: err.message };
+    }
+  };
+
+  const fetchPreferences = async () => {
+    try {
+      const res = await apiClient.get('/notifications/preferences');
+      return res.data;
+    } catch (err) {
+      return {
+        new_prescription: true,
+        new_orders: true,
+        low_stock: true,
+        out_of_stock: true,
+        new_stock: true,
+        expiry_alerts: true,
+        order_updates: true,
+        sound_enabled: true
+      };
+    }
+  };
+
+  const savePreferences = async (preferences) => {
+    try {
+      const res = await apiClient.put('/notifications/preferences', preferences);
+      return { success: true, data: res.data };
+    } catch (err) {
+      return { success: false, message: err.message };
     }
   };
 
   return {
     getNotifications: fetchNotifications,
-    markAsRead
+    getUnreadCount: fetchUnreadCount,
+    markAsRead,
+    markAllAsRead,
+    getPreferences: fetchPreferences,
+    savePreferences
   };
 };
+
+export function formatNotificationFromBackend(n) {
+  const type = (n.notification_type || 'SYSTEM').toUpperCase();
+  let category = 'system';
+  if (type.includes('PRESCRIPTION')) category = 'prescription';
+  else if (type.includes('ORDER')) category = 'order';
+  else if (type.includes('STOCK') || type.includes('EXPIRY') || type.includes('CATALOGUE')) category = 'inventory';
+
+  const d = n.created_at ? new Date(n.created_at) : new Date();
+  const timeFormatted = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateFormatted = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+  return {
+    id: n.id,
+    title: n.title || 'Dispensary Alert',
+    message: n.message || n.content || '',
+    type: type,
+    category: category,
+    read: n.is_read || false,
+    isRead: n.is_read || false,
+    actionUrl: n.action_url || (category === 'prescription' ? '/prescriptions' : (category === 'order' ? '/orders' : '/medicines')),
+    timestamp: `${dateFormatted}, ${timeFormatted}`,
+    rawDate: n.created_at
+  };
+}

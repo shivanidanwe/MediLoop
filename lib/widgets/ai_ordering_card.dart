@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import '../core/theme/app_theme.dart';
 import '../routes/app_routes.dart';
 
@@ -11,18 +10,16 @@ class AIOrderingCard extends StatefulWidget {
 }
 
 class _AIOrderingCardState extends State<AIOrderingCard> {
-  bool _isHoveredVoice = false;
-  bool _isHoveredText = false;
-
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            const Color(0xFF164632).withOpacity(0.92), // Deep Emerald Glass
-            const Color(0xFF2E7D5B).withOpacity(0.85), // Emerald Glass
+            AppTheme.midnightNavy,
+            AppTheme.deepBlue,
+            Color(0xFF1E3A8A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -30,248 +27,185 @@ class _AIOrderingCardState extends State<AIOrderingCard> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: Colors.white.withOpacity(0.2),
-          width: 1.5,
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2E7D5B).withOpacity(0.22),
+            color: AppTheme.royalBlue.withOpacity(0.25),
             blurRadius: 24,
-            offset: const Offset(0, 12),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Stack(
-            children: [
-              // Background decorative glow shapes
-              Positioned(
-                right: -20,
-                top: -20,
-                child: Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.06),
+        child: Stack(
+          children: [
+            // Ambient glowing orbs
+            Positioned(
+              right: -30,
+              bottom: -30,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.electricCyan.withOpacity(0.3),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
-              Positioned(
-                left: -40,
-                bottom: -40,
-                child: Container(
-                  width: 160,
-                  height: 160,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.04),
+            ),
+            Positioned(
+              left: 20,
+              top: -40,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppTheme.violet.withOpacity(0.25),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
+            ),
 
-              // Main Card Content
-              Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title and Icon
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.12),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: Colors.white.withOpacity(0.2),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: const Row(
-                                      children: [
-                                        Icon(
-                                          Icons.auto_awesome,
-                                          color: Color(0xFFFBBF24), // Soft Gold style
-                                          size: 13,
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          "AI ORDERING",
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 1.2,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                "AI Ordering Assistant",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                "Order medicines using voice or text with AI assistance.",
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.85),
-                                  fontSize: 13,
-                                  height: 1.45,
-                                ),
-                              ),
-                            ],
+            Padding(
+              padding: const EdgeInsets.all(22.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.electricCyan.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppTheme.electricCyan.withOpacity(0.35),
+                            width: 1,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        // AI Assistant Icon
-                        Container(
-                          padding: const EdgeInsets.all(12),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.auto_awesome_rounded, color: AppTheme.electricCyan, size: 14),
+                            SizedBox(width: 5),
+                            Text(
+                              "INTELLIGENT AI AGENT",
+                              style: TextStyle(
+                                color: AppTheme.electricCyan,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.mint,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "Ask MediLoop AI Companion",
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Check interactions, find generic substitutes, or reorder medications with smart natural conversation.",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.8),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [AppTheme.royalBlue, AppTheme.electricCyan],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.royalBlue.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Start Chat",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
+                            color: Colors.white.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withOpacity(0.2),
                               width: 1,
                             ),
                           ),
-                          child: const Icon(
-                            Icons.smart_toy_outlined,
-                            color: Colors.white,
-                            size: 36,
-                          ),
+                          child: const Icon(Icons.mic_none_rounded, color: Colors.white, size: 20),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Voice and Text Order Buttons
-                    Row(
-                      children: [
-                        // Voice Order Button
-                        Expanded(
-                          child: GestureDetector(
-                            onTapDown: (_) => setState(() => _isHoveredVoice = true),
-                            onTapUp: (_) => setState(() => _isHoveredVoice = false),
-                            onTapCancel: () => setState(() => _isHoveredVoice = false),
-                            onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
-                            child: AnimatedScale(
-                              scale: _isHoveredVoice ? 0.96 : 1.0,
-                              duration: const Duration(milliseconds: 100),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 1.2,
-                                  ),
-                                  boxShadow: [
-                                    if (_isHoveredVoice)
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.05),
-                                        blurRadius: 10,
-                                      ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.mic_none_rounded,
-                                        color: Colors.white, size: 20),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      "Voice Order",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-
-                        // Text Order Button
-                        Expanded(
-                          child: GestureDetector(
-                            onTapDown: (_) => setState(() => _isHoveredText = true),
-                            onTapUp: (_) => setState(() => _isHoveredText = false),
-                            onTapCancel: () => setState(() => _isHoveredText = false),
-                            onTap: () => Navigator.pushNamed(context, AppRoutes.aiChat),
-                            child: AnimatedScale(
-                              scale: _isHoveredText ? 0.96 : 1.0,
-                              duration: const Duration(milliseconds: 100),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 1.2,
-                                  ),
-                                  boxShadow: [
-                                    if (_isHoveredText)
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.05),
-                                        blurRadius: 10,
-                                      ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.chat_bubble_outline_rounded,
-                                        color: Colors.white, size: 18),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      "Text Order",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

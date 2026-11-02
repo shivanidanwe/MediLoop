@@ -10,14 +10,20 @@ import Medicines from '../pages/Medicines/Medicines';
 import Customers from '../pages/Customers/Customers';
 import Notifications from '../pages/Notifications/Notifications';
 import Reports from '../pages/Reports/Reports';
+import AIAgentMonitor from '../pages/Agents/AIAgentMonitor';
 import Profile from '../pages/Profile/Profile';
 import Settings from '../pages/Settings/Settings';
 import Login from '../pages/Login/Login';
 
 // Private Route Guard
 const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
   return children;
 };
+
 const AppRoutes = () => {
   const { isAuthenticated } = useAuth();
 
@@ -43,6 +49,7 @@ const AppRoutes = () => {
         <Route path="prescriptions" element={<PrescriptionVerification />} />
         <Route path="prescriptions/:id" element={<PrescriptionDetails />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="agents" element={<AIAgentMonitor />} />
         <Route path="medicines" element={<Medicines />} />
         <Route path="customers" element={<Customers />} />
         <Route path="notifications" element={<Notifications />} />

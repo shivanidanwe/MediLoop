@@ -24,6 +24,24 @@ class Medicine {
     required this.manufacturer,
     required this.prescriptionRequired,
   });
+
+  factory Medicine.fromJson(Map<String, dynamic> json) {
+    final rawName = json['brand_name'] ?? json['name'] ?? 'Medicine';
+    final priceNum = json['price'] ?? 45.0;
+    return Medicine(
+      id: (json['id'] ?? 0).toString(),
+      name: rawName.toString(),
+      description: json['description']?.toString() ?? 'High quality verified pharmaceutical medicine.',
+      price: (priceNum as num).toDouble(),
+      rating: (json['rating'] != null ? (json['rating'] as num).toDouble() : 4.8),
+      imageUrl: json['image_url']?.toString() ?? '',
+      isAvailable: json['is_active'] ?? json['is_available'] ?? true,
+      strength: json['strength']?.toString() ?? '500 mg',
+      dosageForm: json['dosage_form']?.toString() ?? 'Tablet',
+      manufacturer: json['manufacturer']?.toString() ?? 'MediLoop Verified Pharmacy',
+      prescriptionRequired: json['prescription_required'] ?? false,
+    );
+  }
 }
 
 class Category {

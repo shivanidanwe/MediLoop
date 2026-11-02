@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
@@ -8,6 +6,8 @@ import '../../models/address_model.dart';
 import '../../models/prescription_model.dart';
 import '../../services/profile_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/cart_service.dart';
+import '../../core/constants/api_config.dart';
 import '../../widgets/profile_header.dart';
 import '../../widgets/editable_card.dart';
 import '../../widgets/address_card.dart';
@@ -17,7 +17,8 @@ import '../../widgets/prescription_card.dart';
 import '../../routes/app_routes.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final VoidCallback? onBackToHome;
+  const ProfileScreen({super.key, this.onBackToHome});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -28,6 +29,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late UserModel _user;
   late List<AddressModel> _addresses;
   late List<PrescriptionModel> _prescriptions;
+
+  bool _showAllOrders = false;
+  bool _showAllPrescriptions = false;
+  static const int _historyDisplayLimit = 4;
 
   bool _isFetchingProfile = false;
 
@@ -50,6 +55,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadData();
     _profileService.addListener(_onServiceUpdate);
+    CartService().addListener(_onServiceUpdate);
+    CartService().fetchOrdersFromBackend();
 
     _streetController = TextEditingController();
     _cityController = TextEditingController();
@@ -95,6 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _profileService.removeListener(_onServiceUpdate);
+    CartService().removeListener(_onServiceUpdate);
     _streetController.dispose();
     _cityController.dispose();
     _stateController.dispose();
@@ -104,19 +112,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.dispose();
   }
 
-  void _updateProfilePic(String? path) {
+  void _updateProfilePic(String? path) async {
     final updated = _user.copyWith(profilePic: path);
-    _profileService.updateUser(updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile picture updated successfully!')),
-    );
+    await _profileService.updateUser(updated);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture stored in database!')),
+      );
+    }
   }
 
-  void _updatePersonalInfo(UserModel updated) {
-    _profileService.updateUser(updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Personal details updated successfully!')),
-    );
+  void _updatePersonalInfo(UserModel updated) async {
+    await _profileService.updateUser(updated);
+    if (mounted) {
+      setState(() {
+        _user = _profileService.getUser();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Personal details updated & stored in database!')),
+      );
+    }
   }
 
   void _startEditingPrimaryAddress() {
@@ -141,7 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  void _savePrimaryAddress() {
+  void _savePrimaryAddress() async {
     if (_addressFormKey.currentState!.validate()) {
       final primaryAddr = _addresses.firstWhere(
         (a) => a.label.toLowerCase() == 'home',
@@ -163,45 +178,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (_addresses.any((a) => a.id == updated.id)) {
-        _profileService.updateAddress(updated);
+        await _profileService.updateAddress(updated);
       } else {
-        _profileService.addAddress(updated);
+        await _profileService.addAddress(updated);
       }
 
-      setState(() {
-        _isEditingPrimaryAddress = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isEditingPrimaryAddress = false;
+          _loadData();
+        });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Delivery address saved!')),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Delivery address saved & stored in database!')),
+        );
+      }
     }
   }
 
-  void _updateMedicalInfo(List<String> conditions, String allergies) {
+  void _updateMedicalInfo(List<String> conditions, String allergies) async {
     final updated = _user.copyWith(
       medicalConditions: conditions,
       allergies: allergies,
     );
-    _profileService.updateUser(updated);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Medical information updated!')),
-    );
+    await _profileService.updateUser(updated);
+    if (mounted) {
+      setState(() {
+        _user = _profileService.getUser();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Medical information stored in database!')),
+      );
+    }
   }
 
-  void _saveEmergencyContact() {
+  void _saveEmergencyContact() async {
     if (_emergencyFormKey.currentState!.validate()) {
       final updated = _user.copyWith(
         emergencyRelationship: _emergencyRelationshipController.text.trim(),
         emergencyPhone: _emergencyPhoneController.text.trim(),
       );
-      _profileService.updateUser(updated);
-      setState(() {
-        _isEditingEmergency = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Emergency contact saved successfully!')),
-      );
+      await _profileService.updateUser(updated);
+      if (mounted) {
+        setState(() {
+          _isEditingEmergency = false;
+          _user = _profileService.getUser();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Emergency contact saved to database!')),
+        );
+      }
     }
   }
 
@@ -373,6 +399,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  String _getPrescriptionImageUrl(String? rawPath) {
+    if (rawPath == null || rawPath.trim().isEmpty) return '';
+    if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath;
+    String clean = rawPath.replaceAll(r'\', '/');
+    if (clean.contains('uploads/')) {
+      clean = clean.substring(clean.indexOf('uploads/'));
+    }
+    if (!clean.startsWith('/')) {
+      clean = '/$clean';
+    }
+    final base = ApiConfig.baseUrl.replaceAll('/api/v1', '');
+    return '$base$clean';
+  }
+
+  Widget _buildPrescriptionImage(PrescriptionModel rx) {
+    final url = _getPrescriptionImageUrl(rx.filePath);
+    if (url.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          constraints: const BoxConstraints(maxHeight: 280),
+          width: double.infinity,
+          color: Colors.black.withOpacity(0.04),
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            loadingBuilder: (context, child, progress) {
+              if (progress == null) return child;
+              return const SizedBox(
+                height: 160,
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) => _buildMockRxImage(),
+          ),
+        ),
+      );
+    }
+    return _buildMockRxImage();
+  }
+
   void _viewPrescription(PrescriptionModel rx) {
     showDialog(
       context: context,
@@ -380,45 +449,186 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Dialog(
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppBar(
-                title: Text(rx.fileName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                leading: IconButton(
-                  icon: const Icon(Icons.close, color: AppTheme.textColorPrimary),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: (rx.filePath != null && !kIsWeb)
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          height: 320,
-                          child: Image.file(
-                            File(rx.filePath!),
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => _buildMockRxImage(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 650),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppBar(
+                    title: Text(
+                      rx.fileName,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.close, color: AppTheme.textColorPrimary),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                    child: _buildPrescriptionImage(rx),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Extracted Medicines structured list if available
+                  if (rx.items.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.medication_rounded, size: 16, color: AppTheme.primaryColor),
+                              const SizedBox(width: 6),
+                              Text(
+                                "Extracted Medicines (${rx.items.length})",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textColorPrimary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          ...rx.items.map((it) {
+                            final name = (it['medicine_name'] ?? it['name'] ?? 'Prescribed Medicine').toString();
+                            final strength = (it['strength'] ?? '').toString();
+                            final dosage = (it['dosage_pattern'] ?? it['dosage'] ?? '').toString();
+                            final qty = (it['calculated_quantity'] ?? it['quantity'] ?? '').toString();
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.backgroundColor,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_outline_rounded, size: 14, color: AppTheme.primaryColor),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "$name ${strength.isNotEmpty ? '• $strength' : ''} ${dosage.isNotEmpty ? '• $dosage' : ''}",
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textColorPrimary),
+                                    ),
+                                  ),
+                                  if (qty.isNotEmpty)
+                                    Text("Qty: $qty", style: const TextStyle(fontSize: 11, color: AppTheme.textColorSecondary, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
+
+                  // Extracted Text section
+                  if (rx.extractedText != null && rx.extractedText!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.backgroundColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.15)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.receipt_long_rounded, size: 16, color: AppTheme.primaryColor),
+                                SizedBox(width: 6),
+                                Text(
+                                  "OCR Extracted Text",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textColorPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              rx.extractedText!,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                height: 1.4,
+                                color: AppTheme.textColorPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade200),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline_rounded, size: 16, color: Colors.orange),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "No medicines could be auto-extracted. Prescriptions without clear text are forwarded to the pharmacist for manual review.",
+                                style: TextStyle(fontSize: 11.5, color: Colors.brown),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: (rx.status.toLowerCase().contains('verif') || rx.status.toLowerCase().contains('approv')
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.orange.shade800)
+                                .withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            "Status: ${rx.status}",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                              color: (rx.status.toLowerCase().contains('verif') || rx.status.toLowerCase().contains('approv')
+                                  ? const Color(0xFF2E7D32)
+                                  : Colors.orange.shade800),
+                            ),
                           ),
                         ),
-                      )
-                    : _buildMockRxImage(),
+                        Text("Uploaded: ${rx.uploadDate}", style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 11.5)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Status: ${rx.status}", style: TextStyle(fontWeight: FontWeight.bold, color: rx.status == 'Verified' ? AppTheme.primaryColor : Colors.orange.shade800)),
-                    Text("Date: ${rx.uploadDate}", style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 12)),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -434,14 +644,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
+      child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.receipt_long_rounded, size: 54, color: AppTheme.primaryColor),
-          const SizedBox(height: 12),
-          const Text("Prescription Document Scan", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
-          const SizedBox(height: 4),
-          const Text("MediLoop AI Pharmacy verification active", style: TextStyle(color: AppTheme.textColorSecondary, fontSize: 11.5)),
+          Icon(Icons.receipt_long_rounded, size: 54, color: AppTheme.primaryColor),
+          SizedBox(height: 12),
+          Text("Prescription Document Scan", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
+          SizedBox(height: 4),
+          Text("MediLoop AI Pharmacy verification active", style: TextStyle(color: AppTheme.textColorSecondary, fontSize: 11.5)),
         ],
       ),
     );
@@ -527,44 +737,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _handleBackNavigation() {
+    if (widget.onBackToHome != null) {
+      widget.onBackToHome!();
+    } else if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isFetchingProfile) {
-      return Scaffold(
-        backgroundColor: AppTheme.backgroundColor,
-        appBar: AppBar(
-          title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          centerTitle: true,
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor)),
-              SizedBox(height: 16),
-              Text("Loading profile data from API...", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.w500)),
-            ],
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _handleBackNavigation();
+        },
+        child: Scaffold(
+          backgroundColor: AppTheme.backgroundColor,
+          appBar: AppBar(
+            title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColorPrimary)),
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppTheme.textColorPrimary),
+              onPressed: _handleBackNavigation,
+            ),
+          ),
+          body: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor)),
+                SizedBox(height: 16),
+                Text("Loading profile data from API...", style: TextStyle(color: AppTheme.textColorSecondary, fontWeight: FontWeight.w500)),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: AppBar(
-        title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textColorPrimary)),
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppTheme.textColorPrimary),
-          onPressed: () => Navigator.pop(context),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBackNavigation();
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        appBar: AppBar(
+          title: const Text("My Profile", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textColorPrimary)),
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppTheme.textColorPrimary),
+            onPressed: _handleBackNavigation,
+          ),
         ),
-      ),
-      body: SingleChildScrollView(
+        body: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         child: Column(
@@ -607,6 +842,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildOrderPreferencesSection(),
             const SizedBox(height: 20),
 
+            // Order History (Persistent order tracking)
+            _buildOrderHistorySection(),
+            const SizedBox(height: 20),
+
             // 8. Saved Prescriptions
             _buildSavedPrescriptionsSection(),
             const SizedBox(height: 20),
@@ -629,8 +868,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPrimaryAddressSection() {
     final homeAddress = _addresses.firstWhere(
@@ -1033,7 +1273,248 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildOrderHistorySection() {
+    final orders = CartService().orders;
+    final displayedOrders = _showAllOrders ? orders : orders.take(_historyDisplayLimit).toList();
+    final hasMoreOrders = orders.length > _historyDisplayLimit;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.secondaryColor.withOpacity(0.4),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.shopping_bag_outlined,
+                        color: AppTheme.primaryColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      "Order History (${orders.length})",
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textColorPrimary,
+                          ),
+                    ),
+                  ],
+                ),
+                TextButton(
+                  onPressed: () => CartService().fetchOrdersFromBackend(),
+                  child: const Text("Refresh", style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 0.5),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: orders.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Text(
+                        "No orders placed yet.",
+                        style: TextStyle(color: AppTheme.textColorSecondary, fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: displayedOrders.length,
+                        itemBuilder: (context, index) {
+                          final order = displayedOrders[index];
+                          Color statusColor;
+                          switch (order.status.toLowerCase()) {
+                            case 'delivered':
+                              statusColor = const Color(0xFF2E7D32);
+                              break;
+                            case 'prescription approved':
+                              statusColor = Colors.teal.shade700;
+                              break;
+                            case 'out for delivery':
+                              statusColor = Colors.blue.shade700;
+                              break;
+                            case 'preparing':
+                            case 'preparing order':
+                              statusColor = Colors.indigo.shade700;
+                              break;
+                            case 'cancelled':
+                              statusColor = Colors.red.shade700;
+                              break;
+                            default:
+                              statusColor = Colors.orange.shade800;
+                          }
+
+                          final dateStr = "${order.orderDate.day.toString().padLeft(2, '0')}/${order.orderDate.month.toString().padLeft(2, '0')}/${order.orderDate.year}";
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.receipt_outlined, size: 16, color: AppTheme.primaryColor),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          order.orderId,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.textColorPrimary),
+                                        ),
+                                      ],
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: statusColor.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        order.status,
+                                        style: TextStyle(
+                                          color: statusColor,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 10.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "Placed on $dateStr • ${order.items.length} ${order.items.length == 1 ? 'medicine' : 'medicines'}",
+                                  style: const TextStyle(color: AppTheme.textColorSecondary, fontSize: 11.5),
+                                ),
+                                if (order.prescriptionId != null) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.assignment_outlined, size: 12, color: Color(0xFF2E7D32)),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "Linked to Prescription #${order.prescriptionId}",
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF2E7D32), fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                const Divider(height: 16, thickness: 0.5),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "Total: ₹${order.grandTotal.toStringAsFixed(2)}",
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppTheme.primaryColor),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        Navigator.pushNamed(
+                                          context,
+                                          AppRoutes.orderTracking,
+                                          arguments: order.orderId,
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primaryColor,
+                                        minimumSize: Size.zero,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      icon: const Icon(Icons.location_on_outlined, size: 13, color: Colors.white),
+                                      label: const Text("Track Order", style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      if (hasMoreOrders) ...[
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _showAllOrders = !_showAllOrders;
+                              });
+                            },
+                            icon: Icon(
+                              _showAllOrders ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: AppTheme.primaryColor,
+                            ),
+                            label: Text(
+                              _showAllOrders
+                                  ? "View Less"
+                                  : "View More (${orders.length - _historyDisplayLimit} more ${orders.length - _historyDisplayLimit == 1 ? 'order' : 'orders'})",
+                              style: const TextStyle(
+                                color: AppTheme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.35)),
+                              backgroundColor: AppTheme.primaryColor.withOpacity(0.05),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSavedPrescriptionsSection() {
+    final displayedPrescriptions = _showAllPrescriptions
+        ? _prescriptions
+        : _prescriptions.take(_historyDisplayLimit).toList();
+    final hasMorePrescriptions = _prescriptions.length > _historyDisplayLimit;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1071,7 +1552,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      "Saved Prescriptions",
+                      "Prescription History (${_prescriptions.length})",
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontSize: 15.5,
                             fontWeight: FontWeight.bold,
@@ -1107,18 +1588,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _prescriptions.length,
-                    itemBuilder: (context, index) {
-                      final rx = _prescriptions[index];
-                      return PrescriptionCard(
-                        prescription: rx,
-                        onView: () => _viewPrescription(rx),
-                        onDelete: () => _deletePrescription(rx),
-                      );
-                    },
+                : Column(
+                    children: [
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: displayedPrescriptions.length,
+                        itemBuilder: (context, index) {
+                          final rx = displayedPrescriptions[index];
+                          return PrescriptionCard(
+                            prescription: rx,
+                            onView: () => _viewPrescription(rx),
+                            onDelete: () => _deletePrescription(rx),
+                          );
+                        },
+                      ),
+                      if (hasMorePrescriptions) ...[
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _showAllPrescriptions = !_showAllPrescriptions;
+                              });
+                            },
+                            icon: Icon(
+                              _showAllPrescriptions ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: AppTheme.primaryColor,
+                            ),
+                            label: Text(
+                              _showAllPrescriptions
+                                  ? "View Less"
+                                  : "View More (${_prescriptions.length - _historyDisplayLimit} more ${_prescriptions.length - _historyDisplayLimit == 1 ? 'prescription' : 'prescriptions'})",
+                              style: const TextStyle(
+                                color: AppTheme.primaryColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.35)),
+                              backgroundColor: AppTheme.primaryColor.withOpacity(0.05),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
           ),
         ],

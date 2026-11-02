@@ -1,6 +1,8 @@
+import os
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Tuple
-import random
+from PIL import Image
 
 class OCRAngine(ABC):
     @abstractmethod
@@ -12,23 +14,35 @@ class OCRAngine(ABC):
         """
         pass
 
-class MockOCRAngine(OCRAngine):
+class RealOCRAngine(OCRAngine):
     def extract_text(self, image_path: str) -> Tuple[str, float]:
         """
-        Simulates OCR text extraction with a random choice from standard mock prescription layouts.
+        Extracts genuine text from image using native Windows Media OCR (winocr) with PIL.
         """
-        mock_texts = [
-            "Rx\nTab Crocin 650\n1-0-1\n5 Days\n\nTab Amoxicillin 500\n1-1-1\n7 Days\n\nSyp Benadryl\n0-0-1\n3 Days",
-            "Rx\nTab Dolo 650\n1-0-1\n3 Days\n\nCap Amoxicillin 500\n1-0-1\n5 Days",
-            "Rx\nTab Atorvastatin 10\n0-0-1\n30 Days\n\nTab Metformin 500\n1-0-1\n15 Days",
-            "Rx\nTab Combiflam\n1-0-1\n5 Days\n\nSyp Benadryl\n0-0-1\n10 Days"
-        ]
-        text = random.choice(mock_texts)
-        confidence = round(random.uniform(0.88, 0.97), 2)
-        return text, confidence
+        if not image_path or not os.path.exists(image_path):
+            return "", 0.0
 
-# Service Factory to resolve OCR engine (can read config or fallback to Mock)
+        try:
+            import winocr
+            img = Image.open(image_path)
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    res = pool.submit(asyncio.run, winocr.recognize_pil(img, 'en')).result()
+            else:
+                res = loop.run_until_complete(winocr.recognize_pil(img, 'en'))
+
+            extracted = (res.text or "").strip()
+            confidence = 0.94 if len(extracted) > 20 else 0.70
+            return extracted, confidence
+        except Exception:
+            return "", 0.0
+
 def get_ocr_engine() -> OCRAngine:
-    # Here you can check config parameters: e.g., settings.OCR_PROVIDER
-    # If not set or equals "mock", return MockOCRAngine.
-    return MockOCRAngine()
+    return RealOCRAngine()

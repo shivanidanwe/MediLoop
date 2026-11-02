@@ -36,5 +36,7 @@ class CartResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: List[CartItemResponse] = []
+    unavailable_medicines: List[str] = []
+    prescription_text: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

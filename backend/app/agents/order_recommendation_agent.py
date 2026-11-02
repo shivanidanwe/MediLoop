@@ -151,6 +151,9 @@ class OrderRecommendationAgent(BaseAgent):
                     context.db.add(active_cart)
                     context.db.commit()
                     context.db.refresh(active_cart)
+                else:
+                    # Clear preexisting cart items so older, unrelated items do not pollute this prescription
+                    context.db.query(CartItem).filter(CartItem.cart_id == active_cart.id).delete()
 
                 subtotal = 0.0
                 for med_item in (context.matched_medicines or []):

@@ -220,7 +220,7 @@ class _MedicineDetailsScreenState extends State<MedicineDetailsScreen> {
                                   const SizedBox(height: 4),
                                   Text(
                                     "Strength: ${medicine.strength}",
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 14,
                                       color: AppTheme.textColorSecondary,
                                       fontWeight: FontWeight.bold,
@@ -301,7 +301,7 @@ class _MedicineDetailsScreenState extends State<MedicineDetailsScreen> {
                               const SizedBox(height: 12),
                               Text(
                                 medicine.description,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: AppTheme.textColorSecondary,
                                   fontSize: 13,
                                   height: 1.6,
